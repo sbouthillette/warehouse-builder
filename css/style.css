@@ -204,6 +204,51 @@ h2 { margin: 0 0 6px; font-size: 20px; }
 }
 .gate-message.show { display: block; }
 
+.shape-gen-row { margin-bottom: 14px; }
+.shape-gen-row:last-child { margin-bottom: 0; }
+.shape-gen-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.shape-gen-group input, .shape-gen-group select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  width: 150px;
+}
+
+.vertex-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.shape-preview {
+  width: 100%;
+  height: 260px;
+  display: block;
+  background: #0b1120;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 14px;
+}
+
+.data-table input[type="number"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  width: 90px;
+}
+
 .table-wrap { overflow-x: auto; }
 .data-table {
   width: 100%;

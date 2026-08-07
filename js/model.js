@@ -18,12 +18,80 @@ function uid(prefix) {
 
 function emptyProject() {
   return {
-    version: 1,
-    warehouse: null, // { id, name, originX:0, originY:0, width, length, height }
+    version: 2,
+    warehouse: null, // { id, name, height, shape:[{x,y}, ...] } — shape is an ordered polygon outline, metres
     zones: [],        // [{ id, name, x, y, width, length, color, type }]
     bayTemplates: [],  // [{ id, name, upright:{width,depth,height}, beam:{height,width,thickness}, baySpacing, levels:{count, baseHeight, spacing}, maxWeightPerLevelKg }]
     racks: []          // [{ id, name, bayTemplateId, bayCount, x, y, rotation, aisleWidth, maxWeightKg }]
   };
+}
+
+// ---- Polygon shape helpers (shared by model, 2D plan, 3D view, and the shape editor UI) ----
+
+function rectanglePoints(width, length) {
+  const W = Number(width) || 0, L = Number(length) || 0;
+  return [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: L }, { x: 0, y: L }];
+}
+
+// Produces a 6-point L-shaped outline: a WxL bounding rectangle with a
+// notchWidth x notchDepth rectangular notch removed from the given corner.
+function lShapePoints(width, length, notchWidth, notchDepth, corner) {
+  const W = Number(width) || 0, L = Number(length) || 0;
+  const nw = Math.min(Math.max(Number(notchWidth) || 0, 0), Math.max(W - 0.01, 0));
+  const nd = Math.min(Math.max(Number(notchDepth) || 0, 0), Math.max(L - 0.01, 0));
+  switch (corner) {
+    case 'top-left':
+      return [
+        { x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: L },
+        { x: nw, y: L }, { x: nw, y: L - nd }, { x: 0, y: L - nd }
+      ];
+    case 'bottom-right':
+      return [
+        { x: 0, y: 0 }, { x: W - nw, y: 0 }, { x: W - nw, y: nd },
+        { x: W, y: nd }, { x: W, y: L }, { x: 0, y: L }
+      ];
+    case 'bottom-left':
+      return [
+        { x: nw, y: 0 }, { x: W, y: 0 }, { x: W, y: L },
+        { x: 0, y: L }, { x: 0, y: nd }, { x: nw, y: nd }
+      ];
+    case 'top-right':
+    default:
+      return [
+        { x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: L - nd },
+        { x: W - nw, y: L - nd }, { x: W - nw, y: L }, { x: 0, y: L }
+      ];
+  }
+}
+
+function polygonBounds(points) {
+  if (!points || !points.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, length: 0 };
+  const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  return { minX, minY, maxX, maxY, width: maxX - minX, length: maxY - minY };
+}
+
+// Shoelace formula — absolute area in m² regardless of winding direction.
+function polygonArea(points) {
+  if (!points || points.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i], p2 = points[(i + 1) % points.length];
+    sum += p1.x * p2.y - p2.x * p1.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+// Upgrades a legacy rectangle-only warehouse ({width, length}, no shape) to
+// the polygon format, in place. Older saved projects (pre-polygon feature)
+// hit this path once when loaded; saving afterwards persists the migration.
+function normalizeWarehouse(wh) {
+  if (!wh) return wh;
+  if (!wh.shape && wh.width != null && wh.length != null) {
+    wh.shape = rectanglePoints(wh.width, wh.length);
+  }
+  return wh;
 }
 
 class Store {
@@ -97,6 +165,7 @@ class Store {
     const row = await res.json();
     this.currentId = row.id;
     this.data = { ...emptyProject(), ...row.data };
+    this.data.warehouse = normalizeWarehouse(this.data.warehouse);
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -129,19 +198,19 @@ class Store {
     const parsed = JSON.parse(json);
     await this.createWarehouse();
     this.data = { ...emptyProject(), ...parsed };
+    this.data.warehouse = normalizeWarehouse(this.data.warehouse);
     this.notify();
   }
 
   // ---- Warehouse shell -----------------------------------------------
-  setWarehouse({ name, width, length, height }) {
+  // shape: ordered array of {x, y} vertices (metres) tracing the outline —
+  // supports rectangles, L-shapes, or any irregular/non-90° polygon.
+  setWarehouse({ name, height, shape }) {
     this.data.warehouse = {
       id: this.data.warehouse?.id || uid('wh'),
       name: name || 'Warehouse',
-      originX: 0,
-      originY: 0,
-      width: Number(width),
-      length: Number(length),
-      height: Number(height)
+      height: Number(height),
+      shape: (shape || []).map((p) => ({ x: Number(p.x), y: Number(p.y) }))
     };
     this.notify();
   }
@@ -274,4 +343,4 @@ class Store {
 
 // Export a single shared instance
 window.WarehouseStore = new Store();
-window.WarehouseModel = { uid, emptyProject };
+window.WarehouseModel = { uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea, normalizeWarehouse };

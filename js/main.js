@@ -20,6 +20,7 @@
     panels.forEach((p) => p.classList.toggle('active', p.id === `tab-${tab}`));
     if (tab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (tab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
+    if (tab === 'warehouse') renderShapePreview(); // function declaration below is hoisted within this closure
   }
 
   // ---------------- Top bar actions (Export / Import current warehouse) ----------------
@@ -44,6 +45,7 @@
       try {
         await store.importJSON(reader.result);
         await refreshWarehouseList(store.currentId);
+        resetWarehouseFormFromStore();
         if (window.Canvas2D) window.Canvas2D.resetView();
       } catch (err) {
         alert('Invalid project file: ' + err.message);
@@ -125,6 +127,7 @@
     if (!picker.value) return;
     try {
       await store.loadWarehouse(picker.value);
+      resetWarehouseFormFromStore();
       if (window.Canvas2D) window.Canvas2D.resetView();
       switchTab('warehouse');
     } catch (err) {
@@ -136,6 +139,7 @@
     try {
       await store.createWarehouse();
       await refreshWarehouseList(store.currentId);
+      resetWarehouseFormFromStore();
       toggleEmptyState(false);
       switchTab('warehouse');
     } catch (err) {
@@ -155,19 +159,149 @@
     const list = await refreshWarehouseList();
     if (list.length > 0) {
       await store.loadWarehouse(list[0].id);
+      resetWarehouseFormFromStore();
       if (window.Canvas2D) window.Canvas2D.resetView();
     }
   });
 
-  // ---------------- Tab 1: Warehouse ----------------
-  const formWarehouse = document.getElementById('formWarehouse');
-  formWarehouse.addEventListener('submit', (e) => {
-    e.preventDefault();
+  // ---------------- Tab 1: Warehouse Shell (polygon outline editor) ----------------
+  const Model = window.WarehouseModel;
+  let draftShape = Model.rectanglePoints(50, 30); // in-progress, unsaved outline being edited
+
+  function defaultDraftShape() {
+    return Model.rectanglePoints(50, 30);
+  }
+
+  // Pulls the currently-open warehouse's saved shape into the draft editor.
+  // Only called when a *different* warehouse is loaded/created — never on
+  // routine store updates — so it doesn't clobber in-progress edits.
+  function resetWarehouseFormFromStore() {
+    const wh = store.data.warehouse;
+    document.getElementById('whName').value = wh?.name || '';
+    document.getElementById('whHeight').value = wh?.height ?? 10;
+    draftShape = wh?.shape ? wh.shape.map((p) => ({ x: p.x, y: p.y })) : defaultDraftShape();
+    renderVertexTable();
+    renderShapePreview();
+  }
+
+  function renderVertexTable() {
+    const tbody = document.querySelector('#vertexTable tbody');
+    tbody.innerHTML = '';
+    draftShape.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td><input type="number" step="0.01" class="vx" value="${p.x}" /></td>
+        <td><input type="number" step="0.01" class="vy" value="${p.y}" /></td>
+        <td>
+          <button class="icon-btn" data-act="up" title="Move up">↑</button>
+          <button class="icon-btn" data-act="down" title="Move down">↓</button>
+          <button class="icon-btn" data-act="del" title="Remove point">✕</button>
+        </td>`;
+      tbody.appendChild(tr);
+
+      tr.querySelector('.vx').addEventListener('input', (e) => {
+        draftShape[i].x = Number(e.target.value) || 0;
+        renderShapePreview();
+      });
+      tr.querySelector('.vy').addEventListener('input', (e) => {
+        draftShape[i].y = Number(e.target.value) || 0;
+        renderShapePreview();
+      });
+      tr.querySelector('[data-act="up"]').addEventListener('click', () => {
+        if (i === 0) return;
+        [draftShape[i - 1], draftShape[i]] = [draftShape[i], draftShape[i - 1]];
+        renderVertexTable(); renderShapePreview();
+      });
+      tr.querySelector('[data-act="down"]').addEventListener('click', () => {
+        if (i === draftShape.length - 1) return;
+        [draftShape[i + 1], draftShape[i]] = [draftShape[i], draftShape[i + 1]];
+        renderVertexTable(); renderShapePreview();
+      });
+      tr.querySelector('[data-act="del"]').addEventListener('click', () => {
+        if (draftShape.length <= 3) { alert('A shape needs at least 3 points.'); return; }
+        draftShape.splice(i, 1);
+        renderVertexTable(); renderShapePreview();
+      });
+    });
+  }
+
+  function renderShapePreview() {
+    const canvas = document.getElementById('shapePreview');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (draftShape.length < 2) return;
+
+    const bounds = Model.polygonBounds(draftShape);
+    const pad = 30;
+    const scale = Math.max(0.01, Math.min((w - pad * 2) / (bounds.width || 1), (h - pad * 2) / (bounds.length || 1)));
+    const toScreen = (p) => ({
+      sx: pad + (p.x - bounds.minX) * scale,
+      sy: h - pad - (p.y - bounds.minY) * scale
+    });
+
+    ctx.beginPath();
+    draftShape.forEach((p, i) => {
+      const s = toScreen(p);
+      if (i === 0) ctx.moveTo(s.sx, s.sy); else ctx.lineTo(s.sx, s.sy);
+    });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(79,142,247,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = '#4f8ef7';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    draftShape.forEach((p, i) => {
+      const s = toScreen(p);
+      ctx.fillStyle = '#f7c56a';
+      ctx.beginPath(); ctx.arc(s.sx, s.sy, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#93a2bd';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(String(i + 1), s.sx + 6, s.sy - 6);
+    });
+
+    if (bounds.minX <= 0 && 0 <= bounds.maxX && bounds.minY <= 0 && 0 <= bounds.maxY) {
+      const s = toScreen({ x: 0, y: 0 });
+      ctx.fillStyle = '#22c58b';
+      ctx.beginPath(); ctx.arc(s.sx, s.sy, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  document.getElementById('btnAddVertex').addEventListener('click', () => {
+    const last = draftShape[draftShape.length - 1] || { x: 0, y: 0 };
+    draftShape.push({ x: last.x, y: last.y });
+    renderVertexTable(); renderShapePreview();
+  });
+
+  document.getElementById('btnGenRect').addEventListener('click', () => {
+    const w = Number(document.getElementById('genRectWidth').value) || 1;
+    const l = Number(document.getElementById('genRectLength').value) || 1;
+    draftShape = Model.rectanglePoints(w, l);
+    renderVertexTable(); renderShapePreview();
+  });
+
+  document.getElementById('btnGenL').addEventListener('click', () => {
+    const w = Number(document.getElementById('genLWidth').value) || 1;
+    const l = Number(document.getElementById('genLLength').value) || 1;
+    const nw = Number(document.getElementById('genLNotchWidth').value) || 0;
+    const nd = Number(document.getElementById('genLNotchDepth').value) || 0;
+    const corner = document.getElementById('genLCorner').value;
+    draftShape = Model.lShapePoints(w, l, nw, nd, corner);
+    renderVertexTable(); renderShapePreview();
+  });
+
+  document.getElementById('btnSaveWarehouse').addEventListener('click', () => {
+    if (draftShape.length < 3) { alert('A shape needs at least 3 points.'); return; }
     store.setWarehouse({
-      name: document.getElementById('whName').value,
-      width: document.getElementById('whWidth').value,
-      length: document.getElementById('whLength').value,
-      height: document.getElementById('whHeight').value
+      name: document.getElementById('whName').value || 'Warehouse',
+      height: document.getElementById('whHeight').value,
+      shape: draftShape
     });
     if (window.Canvas2D) window.Canvas2D.resetView();
     refreshWarehouseList(store.currentId); // picker label reflects the (possibly renamed) warehouse
@@ -177,17 +311,15 @@
     const wh = store.data.warehouse;
     const summary = document.getElementById('warehouseSummary');
     if (!wh) {
-      summary.innerHTML = '<em>No warehouse defined yet.</em>';
+      summary.innerHTML = '<em>No warehouse shell saved yet — build one above.</em>';
       return;
     }
-    document.getElementById('whName').value = wh.name;
-    document.getElementById('whWidth').value = wh.width;
-    document.getElementById('whLength').value = wh.length;
-    document.getElementById('whHeight').value = wh.height;
+    const bounds = Model.polygonBounds(wh.shape);
+    const area = Model.polygonArea(wh.shape);
     summary.innerHTML = `
       <div><b>${escapeHtml(wh.name)}</b></div>
-      <div>Origin: (0, 0) m &nbsp;|&nbsp; Footprint: ${wh.width} m × ${wh.length} m &nbsp;|&nbsp; Clear height: ${wh.height} m</div>
-      <div>Floor area: ${(wh.width * wh.length).toLocaleString()} m²</div>
+      <div>${wh.shape.length}-point outline &nbsp;|&nbsp; Bounding box: ${bounds.width.toFixed(1)} m × ${bounds.length.toFixed(1)} m &nbsp;|&nbsp; Clear height: ${wh.height} m</div>
+      <div>Floor area: ${area.toLocaleString(undefined, { maximumFractionDigits: 1 })} m²</div>
     `;
   }
 
@@ -492,6 +624,8 @@
 
   store.onChange(renderAll);
   renderAll();
+  renderVertexTable();
+  renderShapePreview();
 
   // ---------------- Startup: load the warehouse list, open the most recent ----------------
   (async function init() {
@@ -499,6 +633,7 @@
     if (list.length > 0) {
       try {
         await store.loadWarehouse(list[0].id);
+        resetWarehouseFormFromStore();
         if (window.Canvas2D) window.Canvas2D.resetView();
       } catch (err) {
         console.error(err);

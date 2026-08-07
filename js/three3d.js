@@ -99,23 +99,46 @@ function clearGroup() {
   }
 }
 
+// Builds the warehouse shell from an arbitrary polygon outline (rectangle,
+// L-shape, or any irregular/non-90° shape) — a filled floor plus a wireframe
+// outline (floor perimeter, ceiling perimeter, and verticals at each corner)
+// rather than a solid box, so the racks/zones inside stay visible.
 function buildWarehouseShell(wh) {
-  const geo = new THREE.BoxGeometry(wh.width, wh.height, wh.length);
-  const edges = new THREE.EdgesGeometry(geo);
-  const mat = new THREE.LineBasicMaterial({ color: 0x4f8ef7 });
-  const lines = new THREE.LineSegments(edges, mat);
-  lines.position.set(wh.width / 2, wh.height / 2, wh.length / 2);
-  group.add(lines);
+  const pts = wh.shape;
+  if (!pts || pts.length < 3) return;
 
-  const floorGeo = new THREE.PlaneGeometry(wh.width, wh.length);
+  // Floor fill. THREE.Shape lives in an XY plane; after rotating -90° about X
+  // to lay it flat, using Vector2(x, -y) here makes the result land at world
+  // (x, 0, y) — i.e. matching the same X/Z convention used by the outline
+  // lines, zones and racks below (world Z = warehouse Y).
+  const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.y)));
+  const floorGeo = new THREE.ShapeGeometry(shape);
   const floorMat = new THREE.MeshStandardMaterial({ color: 0x121a2e, side: THREE.DoubleSide });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(wh.width / 2, 0, wh.length / 2);
   group.add(floor);
 
-  const grid = new THREE.GridHelper(Math.max(wh.width, wh.length), Math.max(wh.width, wh.length), 0x2b3a5a, 0x1a2540);
-  grid.position.set(wh.width / 2, 0.01, wh.length / 2);
+  // Outline: floor perimeter, ceiling perimeter, and a vertical at each corner.
+  const outlineMat = new THREE.LineBasicMaterial({ color: 0x4f8ef7 });
+  const toV3 = (p, y) => new THREE.Vector3(p.x, y, p.y);
+
+  const floorLoop = pts.map((p) => toV3(p, 0));
+  floorLoop.push(floorLoop[0].clone());
+  group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(floorLoop), outlineMat));
+
+  const ceilLoop = pts.map((p) => toV3(p, wh.height));
+  ceilLoop.push(ceilLoop[0].clone());
+  group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ceilLoop), outlineMat));
+
+  pts.forEach((p) => {
+    const vertGeo = new THREE.BufferGeometry().setFromPoints([toV3(p, 0), toV3(p, wh.height)]);
+    group.add(new THREE.Line(vertGeo, outlineMat));
+  });
+
+  const bounds = window.WarehouseModel.polygonBounds(pts);
+  const span = Math.max(bounds.width, bounds.length, 1);
+  const grid = new THREE.GridHelper(span, Math.round(span), 0x2b3a5a, 0x1a2540);
+  grid.position.set(bounds.minX + bounds.width / 2, 0.01, bounds.minY + bounds.length / 2);
   group.add(grid);
 }
 
@@ -196,15 +219,16 @@ function render(store) {
   if (!group) return;
   clearGroup();
   const wh = store.data.warehouse;
-  if (!wh) return;
+  if (!wh || !wh.shape || wh.shape.length < 3) return;
   buildWarehouseShell(wh);
   buildZones(store.data.zones);
   buildRacks(store.data.racks, store);
 
-  // frame camera on warehouse
-  const target = new THREE.Vector3(wh.width / 2, 0, wh.length / 2);
+  // frame camera on the polygon's bounding box
+  const bounds = window.WarehouseModel.polygonBounds(wh.shape);
+  const target = new THREE.Vector3(bounds.minX + bounds.width / 2, 0, bounds.minY + bounds.length / 2);
   controls.target.copy(target);
-  const diag = Math.sqrt(wh.width * wh.width + wh.length * wh.length);
+  const diag = Math.sqrt(bounds.width * bounds.width + bounds.length * bounds.length) || 10;
   camera.position.set(target.x + diag * 0.55, Math.max(wh.height * 1.4, diag * 0.4), target.z + diag * 0.55);
   controls.update();
 }

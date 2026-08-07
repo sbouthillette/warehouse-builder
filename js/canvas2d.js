@@ -22,15 +22,18 @@
 
   function fitToWarehouse() {
     const wh = window.WarehouseStore.data.warehouse;
-    if (!wh) return;
+    if (!wh || !wh.shape || wh.shape.length < 3) return;
+    const bounds = window.WarehouseModel.polygonBounds(wh.shape);
     const wrap = canvas.parentElement;
     const w = wrap.clientWidth - 80;
     const h = wrap.clientHeight - 80;
-    const scaleX = w / wh.width;
-    const scaleY = h / wh.length;
-    view.scale = Math.max(2, Math.min(scaleX, scaleY));
-    view.panX = 40;
-    view.panY = 40;
+    const scaleX = w / (bounds.width || 1);
+    const scaleY = h / (bounds.length || 1);
+    view.scale = Math.max(0.5, Math.min(scaleX, scaleY));
+    // Pad so the polygon's bounding box (which may not start at 0,0) sits
+    // fully inside the padded viewport rather than assuming an origin-anchored rect.
+    view.panX = 40 - bounds.minX * view.scale;
+    view.panY = 40 - bounds.minY * view.scale;
   }
 
   function worldToScreen(x, y) {
@@ -51,33 +54,52 @@
     if (view.scale < 2) step = 10;
     ctx.strokeStyle = 'rgba(255,255,255,0.05)';
     ctx.lineWidth = 1;
-    const maxX = wh ? Math.max(wh.width, 40) : 60;
-    const maxY = wh ? Math.max(wh.length, 40) : 60;
-    for (let x = 0; x <= maxX + step; x += step) {
+    const bounds = wh && wh.shape ? window.WarehouseModel.polygonBounds(wh.shape) : { minX: 0, minY: 0, maxX: 60, maxY: 60 };
+    const minX = Math.min(0, bounds.minX) - step, maxX = Math.max(40, bounds.maxX) + step;
+    const minY = Math.min(0, bounds.minY) - step, maxY = Math.max(40, bounds.maxY) + step;
+    for (let x = Math.floor(minX / step) * step; x <= maxX; x += step) {
       const a = worldToScreen(x, 0);
-      const b = worldToScreen(x, maxY);
       ctx.beginPath(); ctx.moveTo(a.sx, 0); ctx.lineTo(a.sx, h); ctx.stroke();
     }
-    for (let y = 0; y <= maxY + step; y += step) {
+    for (let y = Math.floor(minY / step) * step; y <= maxY; y += step) {
       const a = worldToScreen(0, y);
       ctx.beginPath(); ctx.moveTo(0, a.sy); ctx.lineTo(w, a.sy); ctx.stroke();
     }
   }
 
+  // Draws the warehouse outline as an arbitrary closed polygon (rectangle,
+  // L-shape, or any irregular/non-90° shape) rather than assuming a rectangle.
   function drawWarehouse(wh) {
-    if (!wh) return;
-    const a = worldToScreen(0, 0);
-    const b = worldToScreen(wh.width, wh.length);
+    if (!wh || !wh.shape || wh.shape.length < 3) return;
+    const pts = wh.shape.map((p) => worldToScreen(p.x, p.y));
+    ctx.beginPath();
+    pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy); });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(79,142,247,0.04)';
+    ctx.fill();
     ctx.strokeStyle = '#4f8ef7';
     ctx.lineWidth = 2;
-    ctx.strokeRect(Math.min(a.sx, b.sx), Math.min(a.sy, b.sy), Math.abs(b.sx - a.sx), Math.abs(b.sy - a.sy));
+    ctx.stroke();
+
+    const bounds = window.WarehouseModel.polygonBounds(wh.shape);
+    const topLeft = worldToScreen(bounds.minX, bounds.maxY);
     ctx.fillStyle = '#93a2bd';
     ctx.font = '12px sans-serif';
-    ctx.fillText(`${wh.name} — ${wh.width}m × ${wh.length}m`, a.sx, Math.min(a.sy, b.sy) - 8);
-    // origin marker
-    ctx.fillStyle = '#22c58b';
-    ctx.beginPath(); ctx.arc(a.sx, a.sy, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.fillText('(0,0)', a.sx + 6, a.sy + 14);
+    ctx.fillText(`${wh.name} — ${bounds.width.toFixed(1)}m × ${bounds.length.toFixed(1)}m bounding box`, topLeft.sx, topLeft.sy - 8);
+
+    // vertex markers
+    pts.forEach((p) => {
+      ctx.fillStyle = '#4f8ef7';
+      ctx.beginPath(); ctx.arc(p.sx, p.sy, 3, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // origin marker, if (0,0) is in view
+    if (bounds.minX <= 0 && 0 <= bounds.maxX + 5 && bounds.minY <= 0 && 0 <= bounds.maxY + 5) {
+      const o = worldToScreen(0, 0);
+      ctx.fillStyle = '#22c58b';
+      ctx.beginPath(); ctx.arc(o.sx, o.sy, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillText('(0,0)', o.sx + 6, o.sy + 14);
+    }
   }
 
   function drawZones(zones) {
@@ -161,7 +183,7 @@
     const store = window.WarehouseStore;
     if (!store) return;
     const wh = store.data.warehouse;
-    if (!view.fitted && wh) { fitToWarehouse(); view.fitted = true; }
+    if (!view.fitted && wh && wh.shape && wh.shape.length >= 3) { fitToWarehouse(); view.fitted = true; }
     const wrap = canvas.parentElement;
     ctx.clearRect(0, 0, wrap.clientWidth, wrap.clientHeight);
     if (!wh) {
