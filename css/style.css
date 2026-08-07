@@ -97,6 +97,7 @@ html, body {
   justify-content: center;
   padding: 40px;
 }
+.empty-state[hidden] { display: none; }
 .empty-state-inner {
   text-align: center;
   max-width: 420px;
