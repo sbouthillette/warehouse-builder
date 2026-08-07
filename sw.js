@@ -1,5 +1,5 @@
 // sw.js — basic offline app-shell cache for Warehouse Builder PWA
-const CACHE_NAME = 'warehouse-builder-v18';
+const CACHE_NAME = 'warehouse-builder-v19';
 const APP_SHELL = [
   './',
   './index.html',

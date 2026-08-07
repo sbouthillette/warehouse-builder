@@ -281,6 +281,28 @@
       ctx.fillText(String(i + 1), s.sx + 6, s.sy - 6);
     });
 
+    // Wall numbers ("W1", "W2", ...) at the midpoint of each edge, matching
+    // the wall details table below and the "Wall 1"/"Wall 2" references used
+    // when placing doors. Offset a little off the line (perpendicular, in
+    // screen space) so the label doesn't sit directly on top of the stroke.
+    Model.wallSegments(draftShape).forEach((wall) => {
+      const a = toScreen(wall.p1), b = toScreen(wall.p2);
+      const midX = (a.sx + b.sx) / 2, midY = (a.sy + b.sy) / 2;
+      const sdx = b.sx - a.sx, sdy = b.sy - a.sy;
+      const slen = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
+      const nx = -sdy / slen, ny = sdx / slen;
+      const labelX = midX + nx * 13, labelY = midY + ny * 13;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      const text = `W${wall.index + 1}`;
+      ctx.font = 'bold 11px sans-serif';
+      const tw = ctx.measureText(text).width;
+      ctx.fillRect(labelX - tw / 2 - 3, labelY - 9, tw + 6, 14);
+      ctx.fillStyle = '#C97E0D'; // primary-2 — matches the outline color
+      ctx.textAlign = 'center';
+      ctx.fillText(text, labelX, labelY + 2);
+      ctx.textAlign = 'left';
+    });
+
     if (bounds.minX <= 0 && 0 <= bounds.maxX && bounds.minY <= 0 && 0 <= bounds.maxY) {
       const s = toScreen({ x: 0, y: 0 });
       ctx.fillStyle = '#E2572E'; // secondary-2
