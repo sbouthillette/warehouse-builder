@@ -6,7 +6,11 @@
   const canvas = document.getElementById('canvas2d');
   const ctx = canvas.getContext('2d');
 
-  const view = { scale: 20, panX: 40, panY: 40, dragging: false, lastX: 0, lastY: 0, fitted: false };
+  // fittedForId tracks which warehouse's shape the current scale/pan was
+  // fitted to — not just a one-time boolean — so that switching to a
+  // different (or differently-sized) warehouse re-fits automatically instead
+  // of keeping a stale scale computed for a previous building.
+  const view = { scale: 20, panX: 40, panY: 40, dragging: false, lastX: 0, lastY: 0, fittedForId: undefined };
 
   function resizeCanvas() {
     const wrap = canvas.parentElement;
@@ -257,7 +261,11 @@
     const store = window.WarehouseStore;
     if (!store) return;
     const wh = store.data.warehouse;
-    if (!view.fitted && wh && wh.shape && wh.shape.length >= 3) { fitToWarehouse(); view.fitted = true; }
+    const whId = wh ? wh.id : null;
+    if (view.fittedForId !== whId && wh && wh.shape && wh.shape.length >= 3) {
+      fitToWarehouse();
+      view.fittedForId = whId;
+    }
     const wrap = canvas.parentElement;
     ctx.clearRect(0, 0, wrap.clientWidth, wrap.clientHeight);
     if (!wh) {
@@ -296,5 +304,5 @@
 
   window.addEventListener('resize', () => render());
 
-  window.Canvas2D = { render, resetView: () => { view.fitted = false; render(); } };
+  window.Canvas2D = { render, resetView: () => { view.fittedForId = null; render(); } };
 })();

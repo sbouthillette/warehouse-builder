@@ -22,7 +22,7 @@
     currentTab = tab;
     tabButtons.forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     panels.forEach((p) => p.classList.toggle('active', p.id === `tab-${tab}`));
-    if (tab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
+    if (tab === 'plan2d' && window.Canvas2D) window.Canvas2D.resetView(); // always re-fit when the tab is opened
     if (tab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
     if (tab === 'warehouse') renderShapePreview(); // function declaration below is hoisted within this closure
     if (tab === 'bays') renderBayPreview(); // function declaration below is hoisted within this closure
@@ -860,9 +860,15 @@
     legend.innerHTML = `
       <span class="chip"><span class="swatch" style="background:#C97E0D"></span>Warehouse outline</span>
       <span class="chip"><span class="swatch" style="background:#F2A93C"></span>Racks</span>
+      <span class="chip"><span class="swatch" style="background:${DOOR_COLORS.garage}"></span>Garage/Dock Door</span>
+      <span class="chip"><span class="swatch" style="background:${DOOR_COLORS.regular}"></span>Regular Door</span>
       <span class="chip">Zones shown in their own color</span>
     `;
   }
+
+  document.getElementById('btnFitPlan').addEventListener('click', () => {
+    if (window.Canvas2D) window.Canvas2D.resetView();
+  });
 
   // ---------------- helpers ----------------
   function escapeHtml(s) {
