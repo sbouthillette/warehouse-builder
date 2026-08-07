@@ -69,15 +69,9 @@ html, body {
 
 .brand { display: flex; align-items: center; gap: var(--sp-3); }
 .brand-mark {
-  font-size: 18px;
-  color: var(--primary-light);
-  background: var(--tertiary-dark);
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 /* Logotype role: Barlow Condensed 700 — the one place weight 700 is allowed */
@@ -161,6 +155,7 @@ html, body {
   text-align: center;
   max-width: 420px;
 }
+.empty-state-logo { width: 220px; max-width: 60%; height: auto; margin: 0 auto var(--sp-6); display: block; }
 .empty-state-inner h2 { margin-bottom: var(--sp-2); }
 .empty-state-inner .hint { margin: 0 auto var(--sp-4); }
 

@@ -161,13 +161,15 @@ function buildZones(zones) {
 function buildRacks(racks, store) {
   const uprightMat = new THREE.MeshStandardMaterial({ color: 0xF2A93C, metalness: 0.3, roughness: 0.5 }); // primary
   const beamMat = new THREE.MeshStandardMaterial({ color: 0xE2572E, metalness: 0.2, roughness: 0.6 }); // secondary-2
+  const braceMat = new THREE.MeshStandardMaterial({ color: 0xBC5C92, metalness: 0.2, roughness: 0.6 }); // tertiary
 
   racks.forEach((rack) => {
     const tpl = store.getRackTemplate(rack);
     if (!tpl) return;
 
     const uW = tpl.upright.width / 1000;
-    const uD = tpl.upright.depth / 1000;
+    const uT = tpl.upright.thickness / 1000; // each post's own profile depth
+    const uD = tpl.frameDepth / 1000;        // distance between the front and back post
     const uH = tpl.upright.height / 1000;
     const bH = tpl.beam.height / 1000;
     const bT = tpl.beam.thickness / 1000;
@@ -177,13 +179,29 @@ function buildRacks(racks, store) {
 
     const rackGroup = new THREE.Group();
 
-    // uprights (frames) along local X, depth along local Z
+    // Each frame position gets two independent posts — one at the front
+    // face, one at the back face — tied together by two horizontal braces,
+    // rather than a single box spanning the whole rack depth.
+    const tieGeo = new THREE.BoxGeometry(uW * 0.5, 0.04, Math.max(uD - uT, 0.01));
     for (let i = 0; i < uprightCount; i++) {
       const localX = i * (spacing + uW) + uW / 2;
-      const frontGeo = new THREE.BoxGeometry(uW, uH, uD);
-      const mesh = new THREE.Mesh(frontGeo, uprightMat);
-      mesh.position.set(localX, uH / 2, uD / 2);
-      rackGroup.add(mesh);
+      const postGeo = new THREE.BoxGeometry(uW, uH, uT);
+
+      const front = new THREE.Mesh(postGeo, uprightMat);
+      front.position.set(localX, uH / 2, uT / 2);
+      rackGroup.add(front);
+
+      const back = new THREE.Mesh(postGeo.clone(), uprightMat);
+      back.position.set(localX, uH / 2, uD - uT / 2);
+      rackGroup.add(back);
+
+      const braceLow = new THREE.Mesh(tieGeo, braceMat);
+      braceLow.position.set(localX, Math.min(0.15, uH * 0.1), uD / 2);
+      rackGroup.add(braceLow);
+
+      const braceHigh = new THREE.Mesh(tieGeo.clone(), braceMat);
+      braceHigh.position.set(localX, uH - Math.min(0.15, uH * 0.1), uD / 2);
+      rackGroup.add(braceHigh);
     }
 
     // beams per level, front (z=bT/2) and back (z=uD-bT/2)
@@ -206,6 +224,20 @@ function buildRacks(racks, store) {
     const totalLength = uprightCount * uW + bayCount * spacing;
     label.position.set(totalLength / 2, uH + 0.8, uD / 2);
     rackGroup.add(label);
+
+    // Per-bay identifier tags, floating above each bay opening.
+    if (Array.isArray(rack.bays)) {
+      for (let b = 0; b < bayCount; b++) {
+        const bayInfo = rack.bays[b];
+        if (!bayInfo) continue;
+        const startX = b * (spacing + uW) + uW;
+        const text = bayInfo.palletCount > 1 ? `${bayInfo.label} ×${bayInfo.palletCount}` : bayInfo.label;
+        const tag = makeTextSprite(text);
+        tag.scale.set(1.6, 0.4, 1);
+        tag.position.set(startX + spacing / 2, uH + 0.3, uD / 2);
+        rackGroup.add(tag);
+      }
+    }
 
     // position & rotate the whole rack group into world space
     rackGroup.rotation.y = rack.rotation === 90 ? Math.PI / 2 : 0;

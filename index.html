@@ -18,10 +18,10 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">▦</span>
+      <img class="brand-mark" src="assets/logo/spatialis-cube.png" alt="Spatialis OS" />
       <div>
         <h1>Warehouse Builder</h1>
-        <p class="subtitle">Digital Twin Editor</p>
+        <p class="subtitle">Spatialis OS · Digital Twin Editor</p>
       </div>
     </div>
     <div class="topbar-actions">
@@ -44,6 +44,7 @@
 
   <div id="emptyState" class="empty-state" hidden>
     <div class="empty-state-inner">
+      <img class="empty-state-logo" src="assets/logo/spatialis-horizontal-colour.png" alt="Spatialis OS" />
       <h2>No warehouses yet</h2>
       <p class="hint">Create your first warehouse to start building its digital twin. It's saved to your database as you go.</p>
       <button id="btnFirstWarehouse" class="btn btn-primary">Create Warehouse</button>
@@ -188,15 +189,18 @@
             <input type="text" id="bayName" placeholder="Standard Pallet Bay" required />
           </label>
 
-          <label class="full-row section-label">Vertical Beam (Upright)</label>
+          <label class="full-row section-label">Vertical Beam (Upright) — front &amp; back posts</label>
           <label>Upright Width (mm)
             <input type="number" id="uprightWidth" min="1" step="1" value="90" required />
           </label>
-          <label>Upright Thickness / Depth (mm)
-            <input type="number" id="uprightDepth" min="1" step="1" value="900" required />
+          <label>Upright Thickness (mm) — each post's own profile
+            <input type="number" id="uprightThickness" min="1" step="1" value="60" required />
           </label>
           <label>Upright Height (mm)
             <input type="number" id="uprightHeight" min="1" step="1" value="7000" required />
+          </label>
+          <label>Frame Depth (mm) — front-to-back post spacing
+            <input type="number" id="frameDepth" min="1" step="1" value="900" required />
           </label>
 
           <label class="full-row section-label">Horizontal Beam</label>
@@ -233,7 +237,7 @@
         </form>
         <div class="table-wrap">
           <table id="bayTable" class="data-table">
-            <thead><tr><th>Name</th><th>Upright (W×D×H mm)</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Upright (W×T×H mm)</th><th>Frame Depth</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -273,6 +277,18 @@
             <label>Max Weight per Bay (kg)
               <input type="number" id="rackMaxWeight" min="0" step="1" value="4000" />
             </label>
+
+            <label class="full-row section-label">Bay Identifiers</label>
+            <div class="full-row">
+              <p class="hint">Each bay gets its own label and pallet capacity — this table stays in sync with "# of Bays" above.</p>
+              <div class="table-wrap">
+                <table id="baySlotsTable" class="data-table">
+                  <thead><tr><th>#</th><th>Label</th><th>Pallet Positions</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
             <div class="form-actions auto-place-actions">
               <button type="button" id="btnAutoRow" class="btn btn-ghost">Auto-place: next in same row</button>
               <button type="button" id="btnAutoNewRow" class="btn btn-ghost">Auto-place: start new row</button>

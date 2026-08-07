@@ -18,11 +18,17 @@ function uid(prefix) {
 
 function emptyProject() {
   return {
-    version: 2,
+    version: 3,
     warehouse: null, // { id, name, height, shape:[{x,y}, ...] } — shape is an ordered polygon outline, metres
     zones: [],        // [{ id, name, x, y, width, length, color, type }]
-    bayTemplates: [],  // [{ id, name, upright:{width,depth,height}, beam:{height,width,thickness}, baySpacing, levels:{count, baseHeight, spacing}, maxWeightPerLevelKg }]
-    racks: []          // [{ id, name, bayTemplateId, bayCount, x, y, rotation, aisleWidth, maxWeightKg }]
+    // bayTemplates: [{ id, name,
+    //   upright: {width, thickness, height} — a single post's own profile (mm)
+    //   frameDepth — distance between the front and back post of a frame, i.e. rack depth (mm)
+    //   beam: {height, width, thickness}, baySpacing, levels: {count, baseHeight, spacing}, maxWeightPerLevelKg }]
+    bayTemplates: [],
+    // racks: [{ id, name, bayTemplateId, bayCount, x, y, rotation, aisleWidth, maxWeightKg,
+    //   bays: [{ id, label, palletCount }] — one entry per bay, in order }]
+    racks: []
   };
 }
 
@@ -92,6 +98,43 @@ function normalizeWarehouse(wh) {
     wh.shape = rectanglePoints(wh.width, wh.length);
   }
   return wh;
+}
+
+// Generates a default set of bay identifiers, e.g. for a freshly-created
+// rack or one that predates the per-bay identifier feature.
+function defaultBays(count) {
+  const n = Math.max(0, Number(count) || 0);
+  return Array.from({ length: n }, (_, i) => ({ id: uid('slot'), label: `Bay ${i + 1}`, palletCount: 1 }));
+}
+
+// Upgrades a legacy bay template — where a single "upright" box spanned the
+// whole rack depth (upright.depth) — into the front/back-post model: the
+// post itself gets a small profile thickness, and the old depth value
+// becomes frameDepth (distance between the two posts), which keeps the
+// rack's footprint identical to before the migration.
+function normalizeBayTemplate(t) {
+  if (!t) return t;
+  if (t.frameDepth == null && t.upright && t.upright.depth != null) {
+    t.frameDepth = t.upright.depth;
+    t.upright = { width: t.upright.width, thickness: 60, height: t.upright.height };
+  }
+  return t;
+}
+
+// Ensures a rack has a `bays` array matching its bayCount (generates one for
+// racks saved before the per-bay identifier feature, and pads/trims it if
+// bayCount was edited without going through the UI's own sync logic).
+function normalizeRack(r) {
+  if (!r) return r;
+  const count = Number(r.bayCount) || 0;
+  if (!Array.isArray(r.bays)) {
+    r.bays = defaultBays(count);
+  } else if (r.bays.length !== count) {
+    const bays = r.bays.slice(0, count);
+    while (bays.length < count) bays.push({ id: uid('slot'), label: `Bay ${bays.length + 1}`, palletCount: 1 });
+    r.bays = bays;
+  }
+  return r;
 }
 
 class Store {
@@ -166,6 +209,8 @@ class Store {
     this.currentId = row.id;
     this.data = { ...emptyProject(), ...row.data };
     this.data.warehouse = normalizeWarehouse(this.data.warehouse);
+    this.data.bayTemplates = (this.data.bayTemplates || []).map(normalizeBayTemplate);
+    this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -199,6 +244,8 @@ class Store {
     await this.createWarehouse();
     this.data = { ...emptyProject(), ...parsed };
     this.data.warehouse = normalizeWarehouse(this.data.warehouse);
+    this.data.bayTemplates = (this.data.bayTemplates || []).map(normalizeBayTemplate);
+    this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.notify();
   }
 
@@ -258,9 +305,10 @@ class Store {
       name: tpl.name || 'Bay Template',
       upright: {
         width: Number(tpl.upright.width),
-        depth: Number(tpl.upright.depth),
+        thickness: Number(tpl.upright.thickness),
         height: Number(tpl.upright.height)
       },
+      frameDepth: Number(tpl.frameDepth), // distance between the front and back post
       beam: {
         height: Number(tpl.beam.height),
         width: Number(tpl.beam.width),
@@ -294,16 +342,19 @@ class Store {
 
   // ---- Racks -------------------------------------------------------------
   addRack(rack) {
+    const bayCount = Number(rack.bayCount);
     const r = {
       id: uid('rack'),
       name: rack.name || 'Rack',
       bayTemplateId: rack.bayTemplateId,
-      bayCount: Number(rack.bayCount),
+      bayCount,
       x: Number(rack.x),
       y: Number(rack.y),
       rotation: Number(rack.rotation) || 0, // 0 or 90 degrees
       aisleWidth: Number(rack.aisleWidth) || 0, // metres, gap to next rack in row
-      maxWeightKg: Number(rack.maxWeightKg) || 0 // per-bay max weight capacity
+      maxWeightKg: Number(rack.maxWeightKg) || 0, // per-bay max weight capacity
+      // one identifier per bay opening; the UI keeps this in sync with bayCount
+      bays: Array.isArray(rack.bays) && rack.bays.length === bayCount ? rack.bays : defaultBays(bayCount)
     };
     this.data.racks.push(r);
     this.notify();
@@ -314,6 +365,7 @@ class Store {
     const r = this.data.racks.find((rr) => rr.id === id);
     if (!r) return;
     Object.assign(r, patch);
+    normalizeRack(r); // keep bays[] in sync if bayCount changed without an explicit bays[] patch
     this.notify();
   }
 
@@ -335,7 +387,7 @@ class Store {
     const lengthMm = uprightCount * tpl.upright.width + rack.bayCount * tpl.baySpacing;
     return {
       lengthM: lengthMm / 1000,
-      depthM: tpl.upright.depth / 1000,
+      depthM: tpl.frameDepth / 1000,
       heightM: tpl.upright.height / 1000
     };
   }
@@ -343,4 +395,7 @@ class Store {
 
 // Export a single shared instance
 window.WarehouseStore = new Store();
-window.WarehouseModel = { uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea, normalizeWarehouse };
+window.WarehouseModel = {
+  uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea,
+  normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays
+};

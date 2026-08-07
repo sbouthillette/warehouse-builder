@@ -396,9 +396,10 @@
       name: document.getElementById('bayName').value,
       upright: {
         width: document.getElementById('uprightWidth').value,
-        depth: document.getElementById('uprightDepth').value,
+        thickness: document.getElementById('uprightThickness').value,
         height: document.getElementById('uprightHeight').value
       },
+      frameDepth: document.getElementById('frameDepth').value,
       beam: {
         height: document.getElementById('beamHeight').value,
         width: document.getElementById('beamWidth').value,
@@ -422,8 +423,9 @@
     formBay.reset();
     // restore sensible defaults after reset
     document.getElementById('uprightWidth').value = 90;
-    document.getElementById('uprightDepth').value = 900;
+    document.getElementById('uprightThickness').value = 60;
     document.getElementById('uprightHeight').value = 7000;
+    document.getElementById('frameDepth').value = 900;
     document.getElementById('beamHeight').value = 100;
     document.getElementById('beamWidth').value = 2700;
     document.getElementById('beamThickness').value = 50;
@@ -441,7 +443,8 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${escapeHtml(t.name)}</td>
-        <td>${t.upright.width}×${t.upright.depth}×${t.upright.height}</td>
+        <td>${t.upright.width}×${t.upright.thickness}×${t.upright.height}</td>
+        <td>${t.frameDepth} mm</td>
         <td>${t.beam.height}×${t.beam.width}×${t.beam.thickness}</td>
         <td>${t.baySpacing} mm</td>
         <td>${t.levels.count} (base ${t.levels.baseHeight}, step ${t.levels.spacing})</td>
@@ -461,8 +464,9 @@
       editingBayId = t.id;
       document.getElementById('bayName').value = t.name;
       document.getElementById('uprightWidth').value = t.upright.width;
-      document.getElementById('uprightDepth').value = t.upright.depth;
+      document.getElementById('uprightThickness').value = t.upright.thickness;
       document.getElementById('uprightHeight').value = t.upright.height;
+      document.getElementById('frameDepth').value = t.frameDepth;
       document.getElementById('beamHeight').value = t.beam.height;
       document.getElementById('beamWidth').value = t.beam.width;
       document.getElementById('beamThickness').value = t.beam.thickness;
@@ -479,18 +483,50 @@
   // ---------------- Tab 4: Racks ----------------
   const formRack = document.getElementById('formRack');
   const rackTemplateSelect = document.getElementById('rackBayTemplate');
+  const rackBayCountInput = document.getElementById('rackBayCount');
+
+  // Per-bay identifiers (label + pallet positions), kept in sync with "# of Bays".
+  let draftBays = Model.defaultBays(Number(rackBayCountInput.value) || 0);
+
+  function renderBaySlotsTable() {
+    const tbody = document.querySelector('#baySlotsTable tbody');
+    tbody.innerHTML = '';
+    draftBays.forEach((slot, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td><input type="text" class="slotLabel" value="${escapeHtml(slot.label)}" /></td>
+        <td><input type="number" class="slotPallets" min="1" step="1" value="${slot.palletCount}" /></td>`;
+      tbody.appendChild(tr);
+      tr.querySelector('.slotLabel').addEventListener('input', (e) => { slot.label = e.target.value; });
+      tr.querySelector('.slotPallets').addEventListener('input', (e) => { slot.palletCount = Number(e.target.value) || 1; });
+    });
+  }
+
+  function syncBaySlotsToCount() {
+    const count = Math.max(0, Number(rackBayCountInput.value) || 0);
+    if (draftBays.length === count) return;
+    const next = draftBays.slice(0, count);
+    while (next.length < count) next.push({ id: Model.uid('slot'), label: `Bay ${next.length + 1}`, palletCount: 1 });
+    draftBays = next;
+    renderBaySlotsTable();
+  }
+
+  rackBayCountInput.addEventListener('input', syncBaySlotsToCount);
+  renderBaySlotsTable();
 
   formRack.addEventListener('submit', (e) => {
     e.preventDefault();
     const payload = {
       name: document.getElementById('rackName').value,
       bayTemplateId: rackTemplateSelect.value,
-      bayCount: document.getElementById('rackBayCount').value,
+      bayCount: rackBayCountInput.value,
       rotation: document.getElementById('rackRotation').value,
       x: document.getElementById('rackX').value,
       y: document.getElementById('rackY').value,
       aisleWidth: document.getElementById('rackAisle').value,
-      maxWeightKg: document.getElementById('rackMaxWeight').value
+      maxWeightKg: document.getElementById('rackMaxWeight').value,
+      bays: draftBays
     };
     if (editingRackId) {
       store.updateRack(editingRackId, payload);
@@ -582,12 +618,16 @@
       editingRackId = r.id;
       document.getElementById('rackName').value = r.name;
       rackTemplateSelect.value = r.bayTemplateId;
-      document.getElementById('rackBayCount').value = r.bayCount;
+      rackBayCountInput.value = r.bayCount;
       document.getElementById('rackRotation').value = r.rotation;
       document.getElementById('rackX').value = r.x;
       document.getElementById('rackY').value = r.y;
       document.getElementById('rackAisle').value = r.aisleWidth;
       document.getElementById('rackMaxWeight').value = r.maxWeightKg;
+      draftBays = Array.isArray(r.bays) && r.bays.length === r.bayCount
+        ? r.bays.map((b) => ({ ...b }))
+        : Model.defaultBays(r.bayCount);
+      renderBaySlotsTable();
       formRack.querySelector('button[type=submit]').textContent = 'Update Rack';
       formRack.scrollIntoView({ behavior: 'smooth' });
     }));

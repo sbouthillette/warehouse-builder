@@ -175,6 +175,31 @@
         ctx.fillText(`${r.name} (${r.bayCount} bays)`, x + pw / 2, y + ph / 2 + 4);
       }
       ctx.restore();
+
+      // Per-bay identifiers, only when zoomed in enough for the text to be legible.
+      const cellSpan = (rot ? ph : pw) / r.bayCount;
+      if (Array.isArray(r.bays) && cellSpan >= 42) {
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#1a1a18';
+        for (let i = 0; i < r.bayCount; i++) {
+          const slot = r.bays[i];
+          if (!slot) continue;
+          const text = slot.palletCount > 1 ? `${slot.label} ×${slot.palletCount}` : slot.label;
+          const frac = (i + 0.5) / r.bayCount;
+          ctx.save();
+          if (rot) {
+            const ty = y + ph * frac;
+            ctx.translate(x + pw / 2, ty);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(text, 0, -10); // small offset toward one edge, avoids the centered rack-name label
+          } else {
+            const tx = x + pw * frac;
+            ctx.fillText(text, tx, y + 10);
+          }
+          ctx.restore();
+        }
+      }
     });
   }
 
