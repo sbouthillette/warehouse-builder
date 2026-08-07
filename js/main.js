@@ -21,6 +21,7 @@
     if (tab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (tab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
     if (tab === 'warehouse') renderShapePreview(); // function declaration below is hoisted within this closure
+    if (tab === 'bays') renderBayPreview(); // function declaration below is hoisted within this closure
   }
 
   // ---------------- Top bar actions (Export / Import current warehouse) ----------------
@@ -434,6 +435,49 @@
     document.getElementById('levelBase').value = 150;
     document.getElementById('levelSpacing').value = 1600;
     document.getElementById('bayMaxWeight').value = 1000;
+    renderBayPreview();
+  });
+
+  // Reads the current (unsaved) Bay Builder form values into a plain object
+  // shaped like a bay template, for live 3D preview as the user types.
+  function getDraftBayTemplate() {
+    const num = (id, fallback) => {
+      const v = Number(document.getElementById(id).value);
+      return Number.isFinite(v) && v > 0 ? v : fallback;
+    };
+    return {
+      upright: {
+        width: num('uprightWidth', 90),
+        thickness: num('uprightThickness', 60),
+        height: num('uprightHeight', 7000)
+      },
+      frameDepth: num('frameDepth', 900),
+      beam: {
+        height: num('beamHeight', 100),
+        width: num('beamWidth', 2700),
+        thickness: num('beamThickness', 50)
+      },
+      baySpacing: num('baySpacing', 2700),
+      levels: {
+        count: Math.max(1, Math.round(num('levelCount', 4))),
+        baseHeight: num('levelBase', 150) || 0,
+        spacing: num('levelSpacing', 1600)
+      }
+    };
+  }
+
+  function renderBayPreview() {
+    if (window.BayPreview3D) window.BayPreview3D.render(getDraftBayTemplate());
+  }
+
+  const bayLiveFields = [
+    'uprightWidth', 'uprightThickness', 'uprightHeight', 'frameDepth',
+    'beamHeight', 'beamWidth', 'beamThickness',
+    'baySpacing', 'levelCount', 'levelBase', 'levelSpacing'
+  ];
+  bayLiveFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', renderBayPreview);
   });
 
   function renderBayTable() {
@@ -477,6 +521,7 @@
       document.getElementById('bayMaxWeight').value = t.maxWeightPerLevelKg;
       formBay.querySelector('button[type=submit]').textContent = 'Update Bay Template';
       formBay.scrollIntoView({ behavior: 'smooth' });
+      renderBayPreview();
     }));
   }
 
@@ -666,6 +711,7 @@
   renderAll();
   renderVertexTable();
   renderShapePreview();
+  renderBayPreview();
 
   // ---------------- Startup: load the warehouse list, open the most recent ----------------
   (async function init() {

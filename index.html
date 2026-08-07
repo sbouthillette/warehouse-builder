@@ -68,12 +68,12 @@
         <h2>Warehouse Shell</h2>
         <p class="hint">Define the outer footprint as a polygon — rectangles, L-shapes, or any irregular outline with non-90° walls. Coordinates are in metres from the (0, 0) origin (the shape doesn't need to touch it).</p>
 
-        <div class="warehouse-editor">
-          <div class="warehouse-preview-col">
+        <div class="split-editor">
+          <div class="split-preview-col">
             <canvas id="shapePreview" class="shape-preview shape-preview-large"></canvas>
           </div>
 
-          <div class="warehouse-params-col">
+          <div class="split-params-col">
             <div class="card form-grid">
               <label>Name
                 <input type="text" id="whName" placeholder="Main Distribution Center" required />
@@ -183,58 +183,68 @@
       <section id="tab-bays" class="tab-panel">
         <h2>Bay Builder</h2>
         <p class="hint">Define a single bay by its structural dimensions. All values in millimetres (mm). Save it as a reusable template.</p>
-        <form id="formBay" class="card form-grid">
-          <label class="full-row section-label">Bay Template</label>
-          <label>Template Name
-            <input type="text" id="bayName" placeholder="Standard Pallet Bay" required />
-          </label>
 
-          <label class="full-row section-label">Vertical Beam (Upright) — front &amp; back posts</label>
-          <label>Upright Width (mm)
-            <input type="number" id="uprightWidth" min="1" step="1" value="90" required />
-          </label>
-          <label>Upright Thickness (mm) — each post's own profile
-            <input type="number" id="uprightThickness" min="1" step="1" value="60" required />
-          </label>
-          <label>Upright Height (mm)
-            <input type="number" id="uprightHeight" min="1" step="1" value="7000" required />
-          </label>
-          <label>Frame Depth (mm) — front-to-back post spacing
-            <input type="number" id="frameDepth" min="1" step="1" value="900" required />
-          </label>
-
-          <label class="full-row section-label">Horizontal Beam</label>
-          <label>Beam Height / Profile (mm)
-            <input type="number" id="beamHeight" min="1" step="1" value="100" required />
-          </label>
-          <label>Beam Width / Length (mm)
-            <input type="number" id="beamWidth" min="1" step="1" value="2700" required />
-          </label>
-          <label>Beam Thickness (mm)
-            <input type="number" id="beamThickness" min="1" step="1" value="50" required />
-          </label>
-
-          <label class="full-row section-label">Bay &amp; Levels</label>
-          <label>Bay Spacing — clear opening between uprights (mm)
-            <input type="number" id="baySpacing" min="1" step="1" value="2700" required />
-          </label>
-          <label># of Levels (beam rows)
-            <input type="number" id="levelCount" min="1" step="1" value="4" required />
-          </label>
-          <label>Base Level Height (mm)
-            <input type="number" id="levelBase" min="0" step="1" value="150" required />
-          </label>
-          <label>Level Spacing (mm)
-            <input type="number" id="levelSpacing" min="1" step="1" value="1600" required />
-          </label>
-          <label>Max Weight per Level (kg)
-            <input type="number" id="bayMaxWeight" min="0" step="1" value="1000" />
-          </label>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save Bay Template</button>
+        <div class="split-editor">
+          <div class="split-preview-col">
+            <div id="bayPreviewContainer" class="three-wrap"></div>
           </div>
-        </form>
+
+          <div class="split-params-col">
+            <form id="formBay" class="card form-grid">
+              <label class="full-row section-label">Bay Template</label>
+              <label>Template Name
+                <input type="text" id="bayName" placeholder="Standard Pallet Bay" required />
+              </label>
+
+              <label class="full-row section-label">Vertical Beam (Upright) — front &amp; back posts</label>
+              <label>Upright Width (mm)
+                <input type="number" id="uprightWidth" min="1" step="1" value="90" required />
+              </label>
+              <label>Upright Thickness (mm) — each post's own profile
+                <input type="number" id="uprightThickness" min="1" step="1" value="60" required />
+              </label>
+              <label>Upright Height (mm)
+                <input type="number" id="uprightHeight" min="1" step="1" value="7000" required />
+              </label>
+              <label>Frame Depth (mm) — front-to-back post spacing
+                <input type="number" id="frameDepth" min="1" step="1" value="900" required />
+              </label>
+
+              <label class="full-row section-label">Horizontal Beam</label>
+              <label>Beam Height / Profile (mm)
+                <input type="number" id="beamHeight" min="1" step="1" value="100" required />
+              </label>
+              <label>Beam Width / Length (mm)
+                <input type="number" id="beamWidth" min="1" step="1" value="2700" required />
+              </label>
+              <label>Beam Thickness (mm)
+                <input type="number" id="beamThickness" min="1" step="1" value="50" required />
+              </label>
+
+              <label class="full-row section-label">Bay &amp; Levels</label>
+              <label>Bay Spacing — clear opening between uprights (mm)
+                <input type="number" id="baySpacing" min="1" step="1" value="2700" required />
+              </label>
+              <label># of Levels (beam rows)
+                <input type="number" id="levelCount" min="1" step="1" value="4" required />
+              </label>
+              <label>Base Level Height (mm)
+                <input type="number" id="levelBase" min="0" step="1" value="150" required />
+              </label>
+              <label>Level Spacing (mm)
+                <input type="number" id="levelSpacing" min="1" step="1" value="1600" required />
+              </label>
+              <label>Max Weight per Level (kg)
+                <input type="number" id="bayMaxWeight" min="0" step="1" value="1000" />
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Bay Template</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <div class="table-wrap">
           <table id="bayTable" class="data-table">
             <thead><tr><th>Name</th><th>Upright (W×T×H mm)</th><th>Frame Depth</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
@@ -338,6 +348,7 @@
 <script src="js/model.js"></script>
 <script src="js/canvas2d.js"></script>
 <script type="module" src="js/three3d.js"></script>
+<script type="module" src="js/baypreview3d.js"></script>
 <script src="js/main.js"></script>
 <script>
 if ('serviceWorker' in navigator) {

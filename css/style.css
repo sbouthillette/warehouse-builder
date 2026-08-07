@@ -309,21 +309,22 @@ h2 {
   margin-top: var(--sp-4);
 }
 
-/* Warehouse Shell tab: preview in the middle, parameters in a fixed-width
+/* Split-editor layout: preview in the middle, parameters in a fixed-width
    column on the right. Sidebar nav (.tabs) is untouched — this only splits
-   the content area for this one tab. */
-.warehouse-editor {
+   the content area within a tab. Shared by the Warehouse Shell tab and the
+   Bay Builder tab. */
+.split-editor {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-6);
 }
-.warehouse-preview-col {
+.split-preview-col {
   flex: 1;
   min-width: 0;
   position: sticky;
   top: 0;
 }
-.warehouse-params-col {
+.split-params-col {
   width: 380px;
   flex-shrink: 0;
 }
@@ -335,9 +336,9 @@ h2 {
 }
 
 @media (max-width: 1100px) {
-  .warehouse-editor { flex-direction: column; }
-  .warehouse-preview-col { position: static; width: 100%; }
-  .warehouse-params-col { width: 100%; }
+  .split-editor { flex-direction: column; }
+  .split-preview-col { position: static; width: 100%; }
+  .split-params-col { width: 100%; }
   .shape-preview-large { height: 360px; }
 }
 
