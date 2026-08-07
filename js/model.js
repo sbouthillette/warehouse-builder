@@ -151,6 +151,110 @@ function normalizeDoor(d) {
   return d;
 }
 
+// ---- Rack placement / picking-side geometry helpers -----------------------
+
+// Standard ray-casting point-in-polygon test (m, warehouse space). Points
+// exactly on an edge are unreliable with this test alone — see
+// pointNearPolygonBoundary below, used alongside it.
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+      (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function distToSegment(pt, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq === 0 ? 0 : ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const px = a.x + t * dx, py = a.y + t * dy;
+  return Math.hypot(pt.x - px, pt.y - py);
+}
+
+// True if `pt` sits within `eps` metres of any edge of the polygon —
+// treated as "on the boundary" (and therefore acceptable) rather than
+// ambiguously in/out, since a rack is often placed flush against a wall.
+function pointNearPolygonBoundary(pt, poly, eps) {
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    if (distToSegment(pt, poly[j], poly[i]) <= eps) return true;
+  }
+  return false;
+}
+
+// True if segments p1-p2 and p3-p4 cross each other (proper intersection;
+// collinear/touching edges are not flagged, which is fine here since flush
+// alignment against a wall is expected and handled by the boundary check
+// above rather than this crossing test).
+function segmentsIntersect(p1, p2, p3, p4) {
+  function ccw(a, b, c) { return (c.y - a.y) * (b.x - a.x) - (b.y - a.y) * (c.x - a.x); }
+  const d1 = ccw(p3, p4, p1), d2 = ccw(p3, p4, p2);
+  const d3 = ccw(p1, p2, p3), d4 = ccw(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+// Computes the 4 corners (warehouse-space, m, in order) of a rack's
+// footprint rectangle from its anchor (x,y — the low corner), rotation
+// (0 = length along X, 90 = length along Y) and lengthM/depthM (from
+// Store.rackFootprint). Shared by the fits-inside-the-shell check and the
+// picking-side edge calculation below.
+function rackCorners({ x, y, rotation, lengthM, depthM }) {
+  const rot = Number(rotation) === 90;
+  const w = rot ? depthM : lengthM;
+  const h = rot ? lengthM : depthM;
+  const x0 = Number(x) || 0, y0 = Number(y) || 0;
+  return [
+    { x: x0, y: y0 }, { x: x0 + w, y: y0 },
+    { x: x0 + w, y: y0 + h }, { x: x0, y: y0 + h }
+  ];
+}
+
+// True if the given rectangle (4 corners, in order) lies entirely within
+// the polygon: every corner is inside it (or right on its boundary), and no
+// rectangle edge crosses a polygon edge (catches a rectangle that pokes
+// through a concave notch in an L-shaped shell without any corner itself
+// leaving the polygon). Used to keep racks fully inside the warehouse shell.
+function rectFullyInsidePolygon(corners, polygon) {
+  if (!polygon || polygon.length < 3) return false;
+  const eps = 0.01; // 1 cm tolerance for "flush against the wall"
+  for (const c of corners) {
+    if (!pointInPolygon(c, polygon) && !pointNearPolygonBoundary(c, polygon, eps)) return false;
+  }
+  const polyEdges = wallSegments(polygon);
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i], b = corners[(i + 1) % corners.length];
+    for (const edge of polyEdges) {
+      if (segmentsIntersect(a, b, edge.p1, edge.p2)) return false;
+    }
+  }
+  return true;
+}
+
+// Resolves a rack's chosen picking side ('north'/'south'/'east'/'west' —
+// world-space cardinal directions, independent of the rack's own rotation)
+// to the warehouse-space line segment along that edge of its footprint,
+// plus the outward-facing unit normal. Used to draw a consistent
+// picking-access indicator in both the 2D plan and 3D view.
+function rackPickingEdge({ x, y, rotation, lengthM, depthM, pickingSide }) {
+  const rot = Number(rotation) === 90;
+  const w = rot ? depthM : lengthM;
+  const h = rot ? lengthM : depthM;
+  const x0 = Number(x) || 0, y0 = Number(y) || 0;
+  const x1 = x0 + w, y1 = y0 + h;
+  switch (pickingSide) {
+    case 'north': return { p1: { x: x0, y: y1 }, p2: { x: x1, y: y1 }, nx: 0, ny: 1 };
+    case 'east': return { p1: { x: x1, y: y0 }, p2: { x: x1, y: y1 }, nx: 1, ny: 0 };
+    case 'west': return { p1: { x: x0, y: y0 }, p2: { x: x0, y: y1 }, nx: -1, ny: 0 };
+    case 'south':
+    default: return { p1: { x: x0, y: y0 }, p2: { x: x1, y: y0 }, nx: 0, ny: -1 };
+  }
+}
+
 // Shoelace formula — absolute area in m² regardless of winding direction.
 function polygonArea(points) {
   if (!points || points.length < 3) return 0;
@@ -169,6 +273,10 @@ function normalizeZone(z) {
   if (!z) return z;
   if (z.kind !== 'obstacle') z.kind = 'zone';
   if (z.height == null) z.height = 0;
+  // Upgrades a legacy zone/obstacle — predating the round-obstacle feature —
+  // to have the `shape` field. Only obstacles can be round; flat zones are
+  // always rectangular.
+  if (z.kind !== 'obstacle' || z.shape !== 'round') z.shape = 'rect';
   return z;
 }
 
@@ -242,6 +350,8 @@ function computeLevelElevations(tpl) {
 // Ensures a rack has a `bays` array matching its bayCount (generates one for
 // racks saved before the per-bay identifier feature, and pads/trims it if
 // bayCount was edited without going through the UI's own sync logic).
+const PICKING_SIDES = ['north', 'south', 'east', 'west'];
+
 function normalizeRack(r) {
   if (!r) return r;
   const count = Number(r.bayCount) || 0;
@@ -252,6 +362,9 @@ function normalizeRack(r) {
     while (bays.length < count) bays.push({ id: uid('slot'), label: `Bay ${bays.length + 1}`, palletCount: 1 });
     r.bays = bays;
   }
+  // Legacy racks predate the picking-side feature — default to 'south'
+  // (an arbitrary but valid choice) rather than leaving it unset.
+  if (!PICKING_SIDES.includes(r.pickingSide)) r.pickingSide = 'south';
   return r;
 }
 
@@ -411,14 +524,24 @@ class Store {
   _normalizeZonePayload(zone, existing) {
     const src = (key) => (zone[key] !== undefined ? zone[key] : existing && existing[key]);
     const kind = src('kind') === 'obstacle' ? 'obstacle' : 'zone';
+    // Only obstacles can be round (a round column, tank, etc.); flat zones
+    // are always rectangular.
+    const shape = kind === 'obstacle' && src('shape') === 'round' ? 'round' : 'rect';
+    const width = Number(src('width')) || 0;
+    // A round obstacle is defined by a single diameter (stored in `width`) —
+    // keep `length` in sync with it so any code still treating a zone as a
+    // width×length bounding box (legacy exports, table display) sees a
+    // sensible square footprint rather than a stale/mismatched value.
+    const length = shape === 'round' ? width : (Number(src('length')) || 0);
     return {
       name: src('name') || (kind === 'obstacle' ? 'Obstacle' : 'Zone'),
       kind,
+      shape,
       type: src('type') || (kind === 'obstacle' ? 'Column' : 'Storage'),
       x: Number(src('x')) || 0,
       y: Number(src('y')) || 0,
-      width: Number(src('width')) || 0,
-      length: Number(src('length')) || 0,
+      width,
+      length,
       // height only matters for obstacles (raised); flat zones stay at 0.
       height: kind === 'obstacle' ? (Number(src('height')) || 0.1) : 0,
       color: src('color') || (kind === 'obstacle' ? '#5f5e5a' : '#BC5C92')
@@ -543,6 +666,8 @@ class Store {
       rotation: Number(rack.rotation) || 0, // 0 or 90 degrees
       aisleWidth: Number(rack.aisleWidth) || 0, // metres, gap to next rack in row
       maxWeightKg: Number(rack.maxWeightKg) || 0, // per-bay max weight capacity
+      // which world-space side (N/S/E/W) pickers access the rack from
+      pickingSide: PICKING_SIDES.includes(rack.pickingSide) ? rack.pickingSide : 'south',
       // one identifier per bay opening; the UI keeps this in sync with bayCount
       bays: Array.isArray(rack.bays) && rack.bays.length === bayCount ? rack.bays : defaultBays(bayCount)
     };
@@ -588,5 +713,6 @@ window.WarehouseStore = new Store();
 window.WarehouseModel = {
   uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea,
   normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays,
-  computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone
+  computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone,
+  pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge
 };

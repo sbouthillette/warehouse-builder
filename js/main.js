@@ -366,6 +366,7 @@
   // ---------------- Tab 2: Zones & Obstacles ----------------
   const formZone = document.getElementById('formZone');
   const zoneKindSelect = document.getElementById('zoneKind');
+  const zoneShapeSelect = document.getElementById('zoneShape');
 
   const ZONE_TYPE_OPTIONS = {
     zone: ['Storage', 'Staging', 'Picking', 'Dock', 'Office', 'Other'],
@@ -380,12 +381,27 @@
 
   // Obstacles are raised (need a height) and use a different type vocabulary
   // than flat zones — swap the form to match whichever Kind is selected.
+  // Only obstacles may be round; switching back to Zone forces shape='rect'.
   function updateZoneKindUI() {
     const kind = zoneKindSelect.value;
     document.getElementById('zoneHeightLabel').hidden = kind !== 'obstacle';
     document.getElementById('zoneHeight').required = kind === 'obstacle';
+    document.getElementById('zoneShapeLabel').hidden = kind !== 'obstacle';
+    if (kind !== 'obstacle') zoneShapeSelect.value = 'rect';
     const noun = kind === 'obstacle' ? 'Obstacle' : 'Zone';
     formZone.querySelector('button[type=submit]').textContent = editingZoneId ? `Update ${noun}` : `Add ${noun}`;
+    updateZoneShapeUI();
+  }
+
+  // A round obstacle (e.g. a column) is defined by a single diameter — swap
+  // the Width field's label to "Diameter" and hide the Length field, which
+  // stays in sync with Width behind the scenes (see getDraftZoneOrObstacle
+  // and Store._normalizeZonePayload).
+  function updateZoneShapeUI() {
+    const isRound = zoneKindSelect.value === 'obstacle' && zoneShapeSelect.value === 'round';
+    document.getElementById('zoneWidthLabelText').textContent = isRound ? 'Diameter (m)' : 'Width — X axis (m)';
+    document.getElementById('zoneLengthLabel').hidden = isRound;
+    document.getElementById('zoneLength').required = !isRound;
   }
 
   zoneKindSelect.addEventListener('change', () => {
@@ -396,18 +412,27 @@
     renderZonesPlanPreview();
   });
 
+  zoneShapeSelect.addEventListener('change', () => {
+    updateZoneShapeUI();
+    renderZonesPlanPreview();
+  });
+
   function getDraftZoneOrObstacle() {
     const num = (id, fallback) => {
       const v = Number(document.getElementById(id).value);
       return Number.isFinite(v) && v > 0 ? v : fallback;
     };
+    const kind = zoneKindSelect.value;
+    const shape = kind === 'obstacle' && zoneShapeSelect.value === 'round' ? 'round' : 'rect';
+    const width = num('zoneWidth', 1);
     return {
-      kind: zoneKindSelect.value,
+      kind,
+      shape,
       type: document.getElementById('zoneType').value,
       x: Number(document.getElementById('zoneX').value) || 0,
       y: Number(document.getElementById('zoneY').value) || 0,
-      width: num('zoneWidth', 1),
-      length: num('zoneLength', 1),
+      width,
+      length: shape === 'round' ? width : num('zoneLength', 1),
       height: num('zoneHeight', 2),
       color: document.getElementById('zoneColor').value
     };
@@ -428,6 +453,7 @@
   // pencil edit button (same pattern as Bay Builder).
   function loadZoneIntoForm(z) {
     zoneKindSelect.value = z.kind;
+    zoneShapeSelect.value = z.shape === 'round' ? 'round' : 'rect';
     populateZoneTypeOptions(z.kind, z.type);
     document.getElementById('zoneName').value = z.name;
     document.getElementById('zoneX').value = z.x;
@@ -451,6 +477,7 @@
   function resetZoneForm() {
     formZone.reset();
     zoneKindSelect.value = 'zone';
+    zoneShapeSelect.value = 'rect';
     populateZoneTypeOptions('zone');
     document.getElementById('zoneColor').value = '#BC5C92';
     document.getElementById('zoneHeight').value = 2;
@@ -475,6 +502,7 @@
     const payload = {
       name: document.getElementById('zoneName').value,
       kind: zoneKindSelect.value,
+      shape: zoneShapeSelect.value,
       type: document.getElementById('zoneType').value,
       x: document.getElementById('zoneX').value,
       y: document.getElementById('zoneY').value,
@@ -508,6 +536,7 @@
       tr.innerHTML = `
         <td class="name-cell" data-act="view" data-id="${z.id}" title="Click to edit"><span class="swatch" style="background:${z.color}"></span>${escapeHtml(z.name)}</td>
         <td>${z.kind === 'obstacle' ? 'Obstacle' : 'Zone'}</td>
+        <td>${z.kind === 'obstacle' ? (z.shape === 'round' ? 'Round' : 'Rectangle') : '—'}</td>
         <td>${escapeHtml(z.type)}</td>
         <td>${z.x}</td><td>${z.y}</td><td>${z.width}</td><td>${z.length}</td>
         <td>${z.kind === 'obstacle' ? z.height + ' m' : '—'}</td>
@@ -978,6 +1007,16 @@
   rackBayCountInput.addEventListener('input', syncBaySlotsToCount);
   renderBaySlotsTable();
 
+  // True if a rack with this footprint sits entirely inside the warehouse
+  // shell — used both for the live draft preview (red highlight) and to
+  // hard-block Add/Update Rack.
+  function isRackFootprintValid(x, y, rotation, lengthM, depthM) {
+    const wh = store.data.warehouse;
+    if (!wh || !wh.shape || wh.shape.length < 3) return false;
+    const corners = Model.rackCorners({ x, y, rotation, lengthM, depthM });
+    return Model.rectFullyInsidePolygon(corners, wh.shape);
+  }
+
   // Reads the current (unsaved) Rack form values into a plain rack-footprint
   // object, for the live plan-preview highlight as the user fills it in.
   function getDraftRack() {
@@ -986,13 +1025,17 @@
     if (!bayTemplateId || bayCount <= 0) return null;
     const fp = store.rackFootprint({ bayTemplateId, bayCount });
     if (!fp.lengthM) return null;
+    const x = Number(document.getElementById('rackX').value) || 0;
+    const y = Number(document.getElementById('rackY').value) || 0;
+    const rotation = Number(document.getElementById('rackRotation').value) || 0;
     return {
-      x: Number(document.getElementById('rackX').value) || 0,
-      y: Number(document.getElementById('rackY').value) || 0,
+      x, y,
       lengthM: fp.lengthM,
       depthM: fp.depthM,
-      rotation: Number(document.getElementById('rackRotation').value) || 0,
-      name: document.getElementById('rackName').value || ''
+      rotation,
+      pickingSide: document.getElementById('rackPickingSide').value || 'south',
+      name: document.getElementById('rackName').value || '',
+      valid: isRackFootprintValid(x, y, rotation, fp.lengthM, fp.depthM)
     };
   }
 
@@ -1000,7 +1043,7 @@
     if (window.RacksPlanView) window.RacksPlanView.render({ rack: getDraftRack() });
   }
 
-  const rackLiveFields = ['rackName', 'rackBayTemplate', 'rackBayCount', 'rackRotation', 'rackX', 'rackY'];
+  const rackLiveFields = ['rackName', 'rackBayTemplate', 'rackBayCount', 'rackRotation', 'rackX', 'rackY', 'rackPickingSide'];
   rackLiveFields.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', renderRacksPlanPreview);
@@ -1019,6 +1062,7 @@
   document.getElementById('btnCancelRackEdit').addEventListener('click', () => {
     exitRackEditMode();
     formRack.reset();
+    document.getElementById('rackPickingSide').value = 'south';
     draftBays = Model.defaultBays(Number(rackBayCountInput.value) || 0);
     renderBaySlotsTable();
     renderRacksPlanPreview();
@@ -1026,13 +1070,24 @@
 
   formRack.addEventListener('submit', (e) => {
     e.preventDefault();
+    const bayTemplateId = rackTemplateSelect.value;
+    const bayCount = Number(rackBayCountInput.value) || 0;
+    const x = Number(document.getElementById('rackX').value) || 0;
+    const y = Number(document.getElementById('rackY').value) || 0;
+    const rotation = Number(document.getElementById('rackRotation').value) || 0;
+    const fp = store.rackFootprint({ bayTemplateId, bayCount });
+    if (!isRackFootprintValid(x, y, rotation, fp.lengthM, fp.depthM)) {
+      alert('This rack falls outside the warehouse shell. Adjust its position, rotation, or bay count so it fits entirely within the outline before saving.');
+      return;
+    }
     const payload = {
       name: document.getElementById('rackName').value,
-      bayTemplateId: rackTemplateSelect.value,
-      bayCount: rackBayCountInput.value,
-      rotation: document.getElementById('rackRotation').value,
-      x: document.getElementById('rackX').value,
-      y: document.getElementById('rackY').value,
+      bayTemplateId,
+      bayCount,
+      rotation,
+      x,
+      y,
+      pickingSide: document.getElementById('rackPickingSide').value,
       aisleWidth: document.getElementById('rackAisle').value,
       maxWeightKg: document.getElementById('rackMaxWeight').value,
       bays: draftBays
@@ -1058,6 +1113,7 @@
       document.getElementById('rackY').value = round2(last.y + fp.lengthM);
     }
     document.getElementById('rackRotation').value = String(last.rotation);
+    renderRacksPlanPreview();
   });
 
   document.getElementById('btnAutoNewRow').addEventListener('click', () => {
@@ -1073,6 +1129,7 @@
       document.getElementById('rackY').value = last.y;
     }
     document.getElementById('rackRotation').value = String(last.rotation);
+    renderRacksPlanPreview();
   });
 
   function round2(n) { return Math.round(n * 100) / 100; }
@@ -1110,6 +1167,7 @@
         <td>${fp.lengthM.toFixed(2)} × ${fp.depthM.toFixed(2)} × ${fp.heightM.toFixed(2)}</td>
         <td>${r.x}, ${r.y}</td>
         <td>${r.rotation}°</td>
+        <td>${escapeHtml((r.pickingSide || 'south').replace(/^./, (c) => c.toUpperCase()))}</td>
         <td>${r.aisleWidth}</td>
         <td>${r.maxWeightKg}</td>
         <td>
@@ -1131,6 +1189,7 @@
       document.getElementById('rackRotation').value = r.rotation;
       document.getElementById('rackX').value = r.x;
       document.getElementById('rackY').value = r.y;
+      document.getElementById('rackPickingSide').value = r.pickingSide || 'south';
       document.getElementById('rackAisle').value = r.aisleWidth;
       document.getElementById('rackMaxWeight').value = r.maxWeightKg;
       draftBays = Array.isArray(r.bays) && r.bays.length === r.bayCount
@@ -1152,6 +1211,7 @@
       <span class="chip"><span class="swatch" style="background:#F2A93C"></span>Racks</span>
       <span class="chip"><span class="swatch" style="background:${DOOR_COLORS.garage}"></span>Garage/Dock Door</span>
       <span class="chip"><span class="swatch" style="background:${DOOR_COLORS.regular}"></span>Regular Door</span>
+      <span class="chip"><span class="swatch" style="background:#2F8F4E"></span>Picking access side</span>
       <span class="chip">Zones shown in their own color</span>
     `;
   }

@@ -14,6 +14,9 @@
   // Standard door colors — kept in sync with the same constants in main.js
   // (table swatches) and three3d.js (3D view).
   const DOOR_COLORS = { garage: '#7C8892', regular: '#8B5E34' };
+  // Picking-side indicator color — kept in sync with the same constant in
+  // three3d.js (3D view) and main.js (legend).
+  const PICKING_COLOR = '#2F8F4E';
 
   function hexToRgba(hex, alpha) {
     const h = hex.replace('#', '');
@@ -131,8 +134,45 @@
     // physical objects pickers must route around) render with a solid fill,
     // a diagonal hatch pattern, and a solid border, plus their height in the
     // label, so they read as distinctly "physical" rather than a flat area.
+    // Draws a circular obstacle (e.g. a round column) — same hatch/fill/
+    // stroke treatment as a rectangular obstacle, clipped to a circle
+    // instead of a rect. `z.width` is the diameter; the bounding square's
+    // corner is (z.x, z.y), matching how rectangular zones/obstacles store
+    // their position, so a round obstacle's center is (z.x + r, z.y + r).
+    function drawRoundObstacle(z) {
+      const r = z.width / 2;
+      const centerWorld = { x: z.x + r, y: z.y + r };
+      const c = worldToScreen(centerWorld.x, centerWorld.y);
+      const edge = worldToScreen(centerWorld.x + r, centerWorld.y);
+      const sr = Math.abs(edge.sx - c.sx);
+
+      ctx.fillStyle = hexToRgba(z.color, 0.35);
+      ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.clip();
+      ctx.strokeStyle = hexToRgba(z.color, 0.6);
+      ctx.lineWidth = 1.5;
+      for (let i = -2 * sr; i < 2 * sr; i += 8) {
+        ctx.beginPath();
+        ctx.moveTo(c.sx - sr + i, c.sy + sr);
+        ctx.lineTo(c.sx - sr + i + 2 * sr, c.sy - sr);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.strokeStyle = hexToRgba(z.color, 0.95);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#1a1a18'; // ink
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${z.name} (${z.height}m tall)`, c.sx, c.sy - sr - 6);
+      ctx.textAlign = 'left';
+    }
+
     function drawZones(zones) {
       zones.forEach((z) => {
+        if (z.kind === 'obstacle' && z.shape === 'round') { drawRoundObstacle(z); return; }
+
         const a = worldToScreen(z.x, z.y);
         const b = worldToScreen(z.x + z.width, z.y + z.length);
         const x = Math.min(a.sx, b.sx), y = Math.min(a.sy, b.sy);
@@ -178,11 +218,27 @@
     // clicking Add.
     function drawDraftZone(draft) {
       if (!draft) return;
+      const color = draft.color || (draft.kind === 'obstacle' ? '#5f5e5a' : '#BC5C92');
+
+      if (draft.kind === 'obstacle' && draft.shape === 'round') {
+        const r = draft.width / 2;
+        const c = worldToScreen(draft.x + r, draft.y + r);
+        const edge = worldToScreen(draft.x + r + r, draft.y + r);
+        const sr = Math.abs(edge.sx - c.sx);
+        ctx.fillStyle = hexToRgba(color, 0.3);
+        ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#E2572E'; // secondary-2 — a clearly "actively editing" accent
+        ctx.lineWidth = 3;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        return;
+      }
+
       const a = worldToScreen(draft.x, draft.y);
       const b = worldToScreen(draft.x + draft.width, draft.y + draft.length);
       const x = Math.min(a.sx, b.sx), y = Math.min(a.sy, b.sy);
       const w = Math.abs(b.sx - a.sx), h = Math.abs(b.sy - a.sy);
-      const color = draft.color || (draft.kind === 'obstacle' ? '#5f5e5a' : '#BC5C92');
 
       ctx.fillStyle = hexToRgba(color, 0.3);
       ctx.fillRect(x, y, w, h);
@@ -193,11 +249,43 @@
       ctx.setLineDash([]);
     }
 
+    // Draws a colored edge + outward-pointing arrow along whichever side of
+    // a rack's footprint is marked as the picking-access side. `edge` is
+    // { p1, p2, nx, ny } in warehouse space, from Model.rackPickingEdge.
+    // `color` overrides the default (used to flag an invalid draft red).
+    function drawPickingIndicator(edge, color) {
+      if (!edge) return;
+      color = color || PICKING_COLOR;
+      const a = worldToScreen(edge.p1.x, edge.p1.y);
+      const b = worldToScreen(edge.p2.x, edge.p2.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+
+      const midX = (edge.p1.x + edge.p2.x) / 2, midY = (edge.p1.y + edge.p2.y) / 2;
+      const base = worldToScreen(midX, midY);
+      const tip = worldToScreen(midX + edge.nx * 0.8, midY + edge.ny * 0.8);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(base.sx, base.sy); ctx.lineTo(tip.sx, tip.sy); ctx.stroke();
+      const angle = Math.atan2(tip.sy - base.sy, tip.sx - base.sx);
+      const ah = 6;
+      ctx.beginPath();
+      ctx.moveTo(tip.sx, tip.sy);
+      ctx.lineTo(tip.sx - ah * Math.cos(angle - Math.PI / 6), tip.sy - ah * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(tip.sx - ah * Math.cos(angle + Math.PI / 6), tip.sy - ah * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
     // Highlights an in-progress (unsaved) rack from the Racks & Aisles form —
-    // draft is { x, y, lengthM, depthM, rotation, name } (footprint already
-    // resolved via store.rackFootprint by the caller) — so the user sees
-    // exactly where it will land and how much floor space it takes before
-    // clicking Add Rack.
+    // draft is { x, y, lengthM, depthM, rotation, pickingSide, name, valid }
+    // (footprint already resolved via store.rackFootprint by the caller) —
+    // so the user sees exactly where it will land, how much floor space it
+    // takes, and which side picking happens from before clicking Add Rack.
+    // `valid` (whether it fits fully inside the warehouse shell) recolors
+    // the whole highlight red when false, so an out-of-bounds placement is
+    // obvious before the user even tries to submit.
     function drawDraftRack(draft) {
       if (!draft) return;
       const rot = draft.rotation === 90;
@@ -207,10 +295,12 @@
       const b = worldToScreen(draft.x + w, draft.y + h);
       const x = Math.min(a.sx, b.sx), y = Math.min(a.sy, b.sy);
       const pw = Math.abs(b.sx - a.sx), ph = Math.abs(b.sy - a.sy);
+      const invalid = draft.valid === false;
+      const accent = invalid ? '#C0392B' : '#E2572E'; // red when out of bounds, else the usual "editing" accent
 
-      ctx.fillStyle = 'rgba(242,169,60,0.3)'; // primary tint
+      ctx.fillStyle = invalid ? 'rgba(192,57,43,0.25)' : 'rgba(242,169,60,0.3)';
       ctx.fillRect(x, y, pw, ph);
-      ctx.strokeStyle = '#E2572E'; // secondary-2 — a clearly "actively editing" accent
+      ctx.strokeStyle = accent;
       ctx.lineWidth = 3;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(x, y, pw, ph);
@@ -221,6 +311,19 @@
         ctx.font = 'bold 11px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(draft.name, x + pw / 2, y + ph / 2 + 4);
+        ctx.textAlign = 'left';
+      }
+
+      if (draft.pickingSide) {
+        const edge = window.WarehouseModel.rackPickingEdge(draft);
+        drawPickingIndicator(edge, invalid ? '#C0392B' : PICKING_COLOR);
+      }
+
+      if (invalid) {
+        ctx.fillStyle = '#C0392B';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Outside warehouse shell', x + pw / 2, y - 6);
         ctx.textAlign = 'left';
       }
     }
@@ -297,6 +400,11 @@
             ctx.restore();
           }
         }
+
+        const edge = window.WarehouseModel.rackPickingEdge({
+          x: r.x, y: r.y, rotation: r.rotation, lengthM, depthM, pickingSide: r.pickingSide
+        });
+        drawPickingIndicator(edge);
       });
     }
 

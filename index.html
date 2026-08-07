@@ -161,7 +161,7 @@
 
               <div class="table-wrap">
                 <table id="zonesTable" class="data-table">
-                  <thead><tr><th>Name</th><th>Kind</th><th>Type</th><th>X</th><th>Y</th><th>Width</th><th>Length</th><th>Height</th><th></th></tr></thead>
+                  <thead><tr><th>Name</th><th>Kind</th><th>Shape</th><th>Type</th><th>X</th><th>Y</th><th>Width</th><th>Length</th><th>Height</th><th></th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -192,16 +192,22 @@
                     <option>Other</option>
                   </select>
                 </label>
+                <label id="zoneShapeLabel" hidden>Shape
+                  <select id="zoneShape">
+                    <option value="rect">Rectangle</option>
+                    <option value="round">Round (e.g. a column)</option>
+                  </select>
+                </label>
                 <label>X offset (m)
                   <input type="number" id="zoneX" step="0.1" value="0" required />
                 </label>
                 <label>Y offset (m)
                   <input type="number" id="zoneY" step="0.1" value="0" required />
                 </label>
-                <label>Width — X axis (m)
+                <label id="zoneWidthLabel"><span id="zoneWidthLabelText">Width — X axis (m)</span>
                   <input type="number" id="zoneWidth" min="0.1" step="0.1" required />
                 </label>
-                <label>Length — Y axis (m)
+                <label id="zoneLengthLabel">Length — Y axis (m)
                   <input type="number" id="zoneLength" min="0.1" step="0.1" required />
                 </label>
                 <label id="zoneHeightLabel" hidden>Height (m) — how tall it stands
@@ -377,7 +383,7 @@
 
               <div class="table-wrap">
                 <table id="racksTable" class="data-table">
-                  <thead><tr><th>Name</th><th>Template</th><th>Bays</th><th>Footprint L×D×H (m)</th><th>Pos (X,Y)</th><th>Rot</th><th>Aisle (m)</th><th>Max kg/bay</th><th></th></tr></thead>
+                  <thead><tr><th>Name</th><th>Template</th><th>Bays</th><th>Footprint L×D×H (m)</th><th>Pos (X,Y)</th><th>Rot</th><th>Picking Side</th><th>Aisle (m)</th><th>Max kg/bay</th><th></th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -409,6 +415,14 @@
                 </label>
                 <label>Y position (m)
                   <input type="number" id="rackY" step="0.1" value="0" required />
+                </label>
+                <label>Picking Side — which side pickers access it from
+                  <select id="rackPickingSide">
+                    <option value="south">South (−Y side)</option>
+                    <option value="north">North (+Y side)</option>
+                    <option value="east">East (+X side)</option>
+                    <option value="west">West (−X side)</option>
+                  </select>
                 </label>
                 <label>Aisle Width to next row (m)
                   <input type="number" id="rackAisle" min="0" step="0.1" value="3" required />

@@ -154,8 +154,13 @@ function buildZones(zones) {
   zones.forEach((z) => {
     if (z.kind === 'obstacle') {
       const h = Math.max(z.height, 0.05);
-      const geo = new THREE.BoxGeometry(z.width, h, z.length);
       const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(z.color), metalness: 0.15, roughness: 0.7 });
+      // Round obstacles (e.g. a round column) use a cylinder — its axis is
+      // already Three.js's Y (up) by default, so no extra rotation is
+      // needed. `z.width` is the diameter (see model.js _normalizeZonePayload).
+      const geo = z.shape === 'round'
+        ? new THREE.CylinderGeometry(z.width / 2, z.width / 2, h, 32)
+        : new THREE.BoxGeometry(z.width, h, z.length);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(z.x + z.width / 2, h / 2, -(z.y + z.length / 2));
       group.add(mesh);
@@ -191,6 +196,36 @@ function buildZones(zones) {
 // Standard door colors — kept in sync with the same constants in main.js
 // (table swatches) and canvas2d.js (2D plan).
 const DOOR_COLORS = { garage: 0x7C8892, regular: 0x8B5E34 };
+
+// Picking-side indicator color — kept in sync with the same constant in
+// canvas2d.js (2D plan) and main.js (legend).
+const PICKING_COLOR = 0x2F8F4E;
+
+// Draws a colored floor line + outward-pointing cone along whichever side
+// of a rack's footprint is marked as the picking-access side. `edge` is
+// { p1, p2, nx, ny } in warehouse space (from Model.rackPickingEdge). Added
+// directly to `group` in world space — not nested inside the rack's own
+// (rotated/translated) local group — so it only ever needs the same
+// world_X = warehouse_X, world_Z = -warehouse_Y convention already used for
+// doors and zones, regardless of the rack's own rotation.
+function buildPickingIndicator(edge) {
+  if (!edge) return;
+  const mat = new THREE.LineBasicMaterial({ color: PICKING_COLOR });
+  const p1 = new THREE.Vector3(edge.p1.x, 0.05, -edge.p1.y);
+  const p2 = new THREE.Vector3(edge.p2.x, 0.05, -edge.p2.y);
+  group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), mat));
+
+  const midX = (edge.p1.x + edge.p2.x) / 2, midY = (edge.p1.y + edge.p2.y) / 2;
+  const coneGeo = new THREE.ConeGeometry(0.22, 0.55, 10);
+  const coneMat = new THREE.MeshStandardMaterial({ color: PICKING_COLOR });
+  const cone = new THREE.Mesh(coneGeo, coneMat);
+  cone.position.set(midX + edge.nx * 0.5, 0.3, -(midY + edge.ny * 0.5));
+  // Cones point +Y by default — rotate so it points outward (horizontally,
+  // along the edge's normal) instead.
+  const dir = new THREE.Vector3(edge.nx, 0, -edge.ny).normalize();
+  cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  group.add(cone);
+}
 
 // Renders each door as a colored panel set into its wall, sized to the
 // door's width/height and rotated to match the wall's direction. Since the
@@ -317,6 +352,12 @@ function buildRacks(racks, store) {
     rackGroup.rotation.y = rack.rotation === 90 ? Math.PI / 2 : 0;
     rackGroup.position.set(rack.x, 0, -rack.y);
     group.add(rackGroup);
+
+    const edge = window.WarehouseModel.rackPickingEdge({
+      x: rack.x, y: rack.y, rotation: rack.rotation,
+      lengthM: totalLength, depthM: uD, pickingSide: rack.pickingSide
+    });
+    buildPickingIndicator(edge);
   });
 }
 
