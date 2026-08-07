@@ -275,6 +275,11 @@
 
           <div class="split-params-col">
             <form id="formBay" class="card form-grid">
+              <div class="form-actions form-actions-sticky full-row">
+                <button type="submit" class="btn btn-primary">Save Bay Template</button>
+                <button type="button" id="btnCancelBayEdit" class="btn btn-ghost" hidden>Cancel</button>
+              </div>
+
               <label class="full-row section-label">Bay Template</label>
               <label>Template Name
                 <input type="text" id="bayName" placeholder="Standard Pallet Bay" required />
@@ -325,11 +330,6 @@
               <label>Max Weight per Level (kg)
                 <input type="number" id="bayMaxWeight" min="0" step="1" value="1000" />
               </label>
-
-              <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Save Bay Template</button>
-                <button type="button" id="btnCancelBayEdit" class="btn btn-ghost" hidden>Cancel</button>
-              </div>
             </form>
           </div>
         </div>
