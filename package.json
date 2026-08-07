@@ -1,0 +1,14 @@
+{
+  "name": "warehouse-builder",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Warehouse Builder — digital twin PWA with a Vercel Postgres backend",
+  "type": "module",
+  "scripts": {
+    "dev": "npx vercel dev",
+    "deploy": "npx vercel --prod"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0"
+  }
+}
