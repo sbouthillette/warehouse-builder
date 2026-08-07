@@ -390,8 +390,8 @@ h2 {
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: var(--surface); }
 
-.bay-name-cell { cursor: pointer; color: var(--primary-2); font-weight: 500; }
-.bay-name-cell:hover { text-decoration: underline; }
+.bay-name-cell, .name-cell { cursor: pointer; color: var(--primary-2); font-weight: 500; }
+.bay-name-cell:hover, .name-cell:hover { text-decoration: underline; }
 
 @keyframes rowFlash {
   0% { background: var(--primary-light); }
@@ -414,8 +414,20 @@ h2 {
   height: calc(100vh - 230px);
   min-height: 400px;
 }
-#canvas2d { width: 100%; height: 100%; display: block; cursor: grab; }
-#canvas2d:active { cursor: grabbing; }
+.canvas-wrap canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.canvas-wrap canvas:active { cursor: grabbing; }
+
+/* Inside the split-editor layout (Doors, Zones & Obstacles), the plan
+   preview sits alongside a narrower form column, so give it the same
+   comfortable large-preview sizing used by the Bay Builder / Warehouse Shell
+   previews instead of the full-height main "2D Plan" tab sizing. */
+.split-preview-col .canvas-wrap {
+  height: calc(100vh - 260px);
+  min-height: 420px;
+}
+@media (max-width: 1100px) {
+  .split-preview-col .canvas-wrap { height: 360px; }
+}
 
 .three-wrap {
   background: var(--surface);

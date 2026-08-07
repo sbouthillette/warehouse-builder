@@ -146,8 +146,34 @@ function buildWarehouseShell(wh) {
   group.add(grid);
 }
 
+// Flat zones render as a translucent ground-level plane, unchanged. Obstacles
+// (raised physical objects — columns, fixed equipment — pickers must route
+// around) render as a solid extruded box using their height, with an edge
+// outline for definition, matching the treatment given to doors.
 function buildZones(zones) {
   zones.forEach((z) => {
+    if (z.kind === 'obstacle') {
+      const h = Math.max(z.height, 0.05);
+      const geo = new THREE.BoxGeometry(z.width, h, z.length);
+      const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(z.color), metalness: 0.15, roughness: 0.7 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(z.x + z.width / 2, h / 2, -(z.y + z.length / 2));
+      group.add(mesh);
+
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geo),
+        new THREE.LineBasicMaterial({ color: 0x1a1a18 })
+      );
+      edges.position.copy(mesh.position);
+      group.add(edges);
+
+      const label = makeTextSprite(`${z.name} (${z.height}m)`);
+      label.position.set(z.x + z.width / 2, h + 0.35, -(z.y + z.length / 2));
+      label.scale.set(2.5, 0.65, 1);
+      group.add(label);
+      return;
+    }
+
     const geo = new THREE.PlaneGeometry(z.width, z.length);
     const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(z.color), transparent: true, opacity: 0.22, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat);

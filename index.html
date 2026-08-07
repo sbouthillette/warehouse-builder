@@ -55,7 +55,7 @@
     <nav class="tabs">
       <button class="tab-btn active" data-tab="warehouse">1. Warehouse Shell</button>
       <button class="tab-btn" data-tab="doors">2. Doors</button>
-      <button class="tab-btn" data-tab="zones">3. Zones</button>
+      <button class="tab-btn" data-tab="zones">3. Zones &amp; Obstacles</button>
       <button class="tab-btn" data-tab="bays">4. Bay Builder</button>
       <button class="tab-btn" data-tab="racks">5. Racks &amp; Aisles</button>
       <button class="tab-btn" data-tab="plan2d">6. 2D Plan</button>
@@ -132,48 +132,69 @@
         </div>
       </section>
 
-      <!-- TAB 2: ZONES -->
+      <!-- TAB 2: ZONES & OBSTACLES -->
       <section id="tab-zones" class="tab-panel">
-        <h2>Zones</h2>
-        <p class="hint">Carve the warehouse shell into functional zones (storage, staging, picking, dock, office...).</p>
+        <h2>Zones &amp; Obstacles</h2>
+        <p class="hint">Carve the warehouse shell into functional zones (storage, staging, picking, dock, office...) — flat, ground-level areas — or mark obstacles (columns, fixed equipment) that pickers need to route around — raised, with a height. The plan on the left updates live as you fill in the form.</p>
         <div id="zonesGate" class="gate-message"></div>
         <div id="zonesUI" hidden>
-          <form id="formZone" class="card form-grid">
-            <label>Zone Name
-              <input type="text" id="zoneName" placeholder="Bulk Storage A" required />
-            </label>
-            <label>Type
-              <select id="zoneType">
-                <option>Storage</option>
-                <option>Staging</option>
-                <option>Picking</option>
-                <option>Dock</option>
-                <option>Office</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label>X offset (m)
-              <input type="number" id="zoneX" step="0.1" value="0" required />
-            </label>
-            <label>Y offset (m)
-              <input type="number" id="zoneY" step="0.1" value="0" required />
-            </label>
-            <label>Width — X axis (m)
-              <input type="number" id="zoneWidth" min="0.1" step="0.1" required />
-            </label>
-            <label>Length — Y axis (m)
-              <input type="number" id="zoneLength" min="0.1" step="0.1" required />
-            </label>
-            <label>Color
-              <input type="color" id="zoneColor" value="#BC5C92" />
-            </label>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Add Zone</button>
+          <div class="split-editor">
+            <div class="split-preview-col">
+              <div class="canvas-wrap">
+                <canvas id="zonesPlanCanvas"></canvas>
+              </div>
             </div>
-          </form>
+
+            <div class="split-params-col">
+              <form id="formZone" class="card form-grid">
+                <label>Kind
+                  <select id="zoneKind">
+                    <option value="zone">Zone (flat)</option>
+                    <option value="obstacle">Obstacle (raised)</option>
+                  </select>
+                </label>
+                <label id="zoneNameLabel">Zone Name
+                  <input type="text" id="zoneName" placeholder="Bulk Storage A" required />
+                </label>
+                <label id="zoneTypeLabel">Type
+                  <select id="zoneType">
+                    <option>Storage</option>
+                    <option>Staging</option>
+                    <option>Picking</option>
+                    <option>Dock</option>
+                    <option>Office</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label>X offset (m)
+                  <input type="number" id="zoneX" step="0.1" value="0" required />
+                </label>
+                <label>Y offset (m)
+                  <input type="number" id="zoneY" step="0.1" value="0" required />
+                </label>
+                <label>Width — X axis (m)
+                  <input type="number" id="zoneWidth" min="0.1" step="0.1" required />
+                </label>
+                <label>Length — Y axis (m)
+                  <input type="number" id="zoneLength" min="0.1" step="0.1" required />
+                </label>
+                <label id="zoneHeightLabel" hidden>Height (m) — how tall it stands
+                  <input type="number" id="zoneHeight" min="0.05" step="0.1" value="2" />
+                </label>
+                <label>Color
+                  <input type="color" id="zoneColor" value="#BC5C92" />
+                </label>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Add Zone</button>
+                  <button type="button" id="btnCancelZoneEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table id="zonesTable" class="data-table">
-              <thead><tr><th>Name</th><th>Type</th><th>X</th><th>Y</th><th>Width</th><th>Length</th><th></th></tr></thead>
+              <thead><tr><th>Name</th><th>Kind</th><th>Type</th><th>X</th><th>Y</th><th>Width</th><th>Length</th><th>Height</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -183,35 +204,47 @@
       <!-- TAB 2.5: DOORS -->
       <section id="tab-doors" class="tab-panel">
         <h2>Doors</h2>
-        <p class="hint">Place garage/dock doors and regular (pedestrian) doors on the warehouse walls. Position is measured from the wall's starting corner, walking in the direction the outline was traced.</p>
+        <p class="hint">Place garage/dock doors and regular (pedestrian) doors on the warehouse walls. Position is measured from the wall's starting corner, walking in the direction the outline was traced. The plan on the left updates live as you fill in the form, so you can see exactly where the door will land.</p>
         <div id="doorsGate" class="gate-message"></div>
         <div id="doorsUI" hidden>
-          <form id="formDoor" class="card form-grid">
-            <label>Door Name
-              <input type="text" id="doorLabel" placeholder="Dock Door 1" required />
-            </label>
-            <label>Type
-              <select id="doorType">
-                <option value="garage">Garage / Dock Door</option>
-                <option value="regular">Regular Door</option>
-              </select>
-            </label>
-            <label>Wall
-              <select id="doorWall" required></select>
-            </label>
-            <label>Position along wall (m) — from wall start
-              <input type="number" id="doorOffset" min="0" step="0.1" value="0" required />
-            </label>
-            <label>Width (m)
-              <input type="number" id="doorWidth" min="0.1" step="0.1" value="3" required />
-            </label>
-            <label>Height (m)
-              <input type="number" id="doorHeight" min="0.1" step="0.1" value="4" required />
-            </label>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Add Door</button>
+          <div class="split-editor">
+            <div class="split-preview-col">
+              <div class="canvas-wrap">
+                <canvas id="doorsPlanCanvas"></canvas>
+              </div>
             </div>
-          </form>
+
+            <div class="split-params-col">
+              <form id="formDoor" class="card form-grid">
+                <label>Door Name
+                  <input type="text" id="doorLabel" placeholder="Dock Door 1" required />
+                </label>
+                <label>Type
+                  <select id="doorType">
+                    <option value="garage">Garage / Dock Door</option>
+                    <option value="regular">Regular Door</option>
+                  </select>
+                </label>
+                <label>Wall
+                  <select id="doorWall" required></select>
+                </label>
+                <label>Position along wall (m) — from wall start
+                  <input type="number" id="doorOffset" min="0" step="0.1" value="0" required />
+                </label>
+                <label>Width (m)
+                  <input type="number" id="doorWidth" min="0.1" step="0.1" value="3" required />
+                </label>
+                <label>Height (m)
+                  <input type="number" id="doorHeight" min="0.1" step="0.1" value="4" required />
+                </label>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary">Add Door</button>
+                  <button type="button" id="btnCancelDoorEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table id="doorsTable" class="data-table">
               <thead><tr><th>Name</th><th>Type</th><th>Wall</th><th>Position</th><th>Width</th><th>Height</th><th></th></tr></thead>

@@ -20,7 +20,13 @@ function emptyProject() {
   return {
     version: 3,
     warehouse: null, // { id, name, height, shape:[{x,y}, ...] } — shape is an ordered polygon outline, metres
-    zones: [],        // [{ id, name, x, y, width, length, color, type }]
+    // zones: [{ id, name, kind, type, x, y, width, length, color, height }]
+    //   kind — 'zone' (flat functional area: storage/staging/picking/etc.,
+    //     no height, rendered as a flat translucent tint) or 'obstacle' (a
+    //     raised physical object — column, fixed equipment — pickers must
+    //     route around; rendered as a solid extruded box using `height`, in
+    //     metres). `height` is 0/unused for kind:'zone'.
+    zones: [],
     // bayTemplates: [{ id, name,
     //   upright: {width, thickness, height} — a single post's own profile (mm)
     //   frameDepth — distance between the front and back post of a frame, i.e. rack depth (mm)
@@ -154,6 +160,16 @@ function polygonArea(points) {
     sum += p1.x * p2.y - p2.x * p1.y;
   }
   return Math.abs(sum) / 2;
+}
+
+// Upgrades a legacy zone record — predating the Obstacles feature — to have
+// the `kind`/`height` fields, defaulting to a flat 'zone' (unchanged
+// behavior/appearance) rather than a raised 'obstacle'.
+function normalizeZone(z) {
+  if (!z) return z;
+  if (z.kind !== 'obstacle') z.kind = 'zone';
+  if (z.height == null) z.height = 0;
+  return z;
 }
 
 // Upgrades a legacy rectangle-only warehouse ({width, length}, no shape) to
@@ -314,6 +330,7 @@ class Store {
     this.data.bayTemplates = (this.data.bayTemplates || []).map(normalizeBayTemplate);
     this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
+    this.data.zones = (this.data.zones || []).map(normalizeZone);
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -350,6 +367,7 @@ class Store {
     this.data.bayTemplates = (this.data.bayTemplates || []).map(normalizeBayTemplate);
     this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
+    this.data.zones = (this.data.zones || []).map(normalizeZone);
     this.notify();
   }
 
@@ -387,18 +405,28 @@ class Store {
     this.notify();
   }
 
-  // ---- Zones -------------------------------------------------------------
-  addZone(zone) {
-    const z = {
-      id: uid('zone'),
-      name: zone.name || 'Zone',
-      x: Number(zone.x),
-      y: Number(zone.y),
-      width: Number(zone.width),
-      length: Number(zone.length),
-      color: zone.color || '#BC5C92',
-      type: zone.type || 'Storage'
+  // ---- Zones & Obstacles ---------------------------------------------
+  // Normalizes a raw form payload into a correctly-typed zone/obstacle
+  // record. Shared by add and update so both paths store consistent types.
+  _normalizeZonePayload(zone, existing) {
+    const src = (key) => (zone[key] !== undefined ? zone[key] : existing && existing[key]);
+    const kind = src('kind') === 'obstacle' ? 'obstacle' : 'zone';
+    return {
+      name: src('name') || (kind === 'obstacle' ? 'Obstacle' : 'Zone'),
+      kind,
+      type: src('type') || (kind === 'obstacle' ? 'Column' : 'Storage'),
+      x: Number(src('x')) || 0,
+      y: Number(src('y')) || 0,
+      width: Number(src('width')) || 0,
+      length: Number(src('length')) || 0,
+      // height only matters for obstacles (raised); flat zones stay at 0.
+      height: kind === 'obstacle' ? (Number(src('height')) || 0.1) : 0,
+      color: src('color') || (kind === 'obstacle' ? '#5f5e5a' : '#BC5C92')
     };
+  }
+
+  addZone(zone) {
+    const z = { id: uid('zone'), ...this._normalizeZonePayload(zone, null) };
     this.data.zones.push(z);
     this.notify();
     return z;
@@ -407,7 +435,7 @@ class Store {
   updateZone(id, patch) {
     const z = this.data.zones.find((zz) => zz.id === id);
     if (!z) return;
-    Object.assign(z, patch);
+    Object.assign(z, this._normalizeZonePayload(patch, z));
     this.notify();
   }
 
@@ -560,5 +588,5 @@ window.WarehouseStore = new Store();
 window.WarehouseModel = {
   uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea,
   normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays,
-  computeLevelElevations, wallSegments, doorPoints, normalizeDoor
+  computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone
 };

@@ -26,7 +26,13 @@
     if (tab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
     if (tab === 'warehouse') renderShapePreview(); // function declaration below is hoisted within this closure
     if (tab === 'bays') renderBayPreview(); // function declaration below is hoisted within this closure
-    if (tab === 'doors') renderWallOptions(); // function declaration below is hoisted within this closure
+    if (tab === 'doors') { // function declarations below are hoisted within this closure
+      renderWallOptions();
+      if (window.DoorsPlanView) window.DoorsPlanView.resetView({ door: getDraftDoor() });
+    }
+    if (tab === 'zones' && window.ZonesPlanView) { // function declaration below is hoisted within this closure
+      window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
+    }
   }
 
   // ---------------- Top bar actions (Export / Import current warehouse) ----------------
@@ -329,34 +335,135 @@
     `;
   }
 
-  // ---------------- Tab 2: Zones ----------------
+  // ---------------- Tab 2: Zones & Obstacles ----------------
   const formZone = document.getElementById('formZone');
+  const zoneKindSelect = document.getElementById('zoneKind');
+
+  const ZONE_TYPE_OPTIONS = {
+    zone: ['Storage', 'Staging', 'Picking', 'Dock', 'Office', 'Other'],
+    obstacle: ['Column', 'Equipment', 'Fixed Structure', 'Other']
+  };
+
+  function populateZoneTypeOptions(kind, selected) {
+    const select = document.getElementById('zoneType');
+    const options = ZONE_TYPE_OPTIONS[kind] || ZONE_TYPE_OPTIONS.zone;
+    select.innerHTML = options.map((o) => `<option${o === selected ? ' selected' : ''}>${o}</option>`).join('');
+  }
+
+  // Obstacles are raised (need a height) and use a different type vocabulary
+  // than flat zones — swap the form to match whichever Kind is selected.
+  function updateZoneKindUI() {
+    const kind = zoneKindSelect.value;
+    document.getElementById('zoneHeightLabel').hidden = kind !== 'obstacle';
+    document.getElementById('zoneHeight').required = kind === 'obstacle';
+    const noun = kind === 'obstacle' ? 'Obstacle' : 'Zone';
+    formZone.querySelector('button[type=submit]').textContent = editingZoneId ? `Update ${noun}` : `Add ${noun}`;
+  }
+
+  zoneKindSelect.addEventListener('change', () => {
+    const kind = zoneKindSelect.value;
+    populateZoneTypeOptions(kind);
+    document.getElementById('zoneColor').value = kind === 'obstacle' ? '#5f5e5a' : '#BC5C92';
+    updateZoneKindUI();
+    renderZonesPlanPreview();
+  });
+
+  function getDraftZoneOrObstacle() {
+    const num = (id, fallback) => {
+      const v = Number(document.getElementById(id).value);
+      return Number.isFinite(v) && v > 0 ? v : fallback;
+    };
+    return {
+      kind: zoneKindSelect.value,
+      type: document.getElementById('zoneType').value,
+      x: Number(document.getElementById('zoneX').value) || 0,
+      y: Number(document.getElementById('zoneY').value) || 0,
+      width: num('zoneWidth', 1),
+      length: num('zoneLength', 1),
+      height: num('zoneHeight', 2),
+      color: document.getElementById('zoneColor').value
+    };
+  }
+
+  function renderZonesPlanPreview() {
+    if (window.ZonesPlanView) window.ZonesPlanView.render({ zone: getDraftZoneOrObstacle() });
+  }
+
+  const zoneLiveFields = ['zoneType', 'zoneX', 'zoneY', 'zoneWidth', 'zoneLength', 'zoneHeight', 'zoneColor'];
+  zoneLiveFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', renderZonesPlanPreview);
+  });
+
+  // Populates the form with an existing zone/obstacle's values and puts the
+  // form into edit mode for it — used by both the name-cell click and the
+  // pencil edit button (same pattern as Bay Builder).
+  function loadZoneIntoForm(z) {
+    zoneKindSelect.value = z.kind;
+    populateZoneTypeOptions(z.kind, z.type);
+    document.getElementById('zoneName').value = z.name;
+    document.getElementById('zoneX').value = z.x;
+    document.getElementById('zoneY').value = z.y;
+    document.getElementById('zoneWidth').value = z.width;
+    document.getElementById('zoneLength').value = z.length;
+    document.getElementById('zoneHeight').value = z.height || 2;
+    document.getElementById('zoneColor').value = z.color;
+    editingZoneId = z.id;
+    document.getElementById('btnCancelZoneEdit').hidden = false;
+    updateZoneKindUI();
+    renderZonesPlanPreview();
+  }
+
+  function exitZoneEditMode() {
+    editingZoneId = null;
+    document.getElementById('btnCancelZoneEdit').hidden = true;
+    updateZoneKindUI();
+  }
+
+  function resetZoneForm() {
+    formZone.reset();
+    zoneKindSelect.value = 'zone';
+    populateZoneTypeOptions('zone');
+    document.getElementById('zoneColor').value = '#BC5C92';
+    document.getElementById('zoneHeight').value = 2;
+    updateZoneKindUI();
+    renderZonesPlanPreview();
+  }
+
+  document.getElementById('btnCancelZoneEdit').addEventListener('click', () => {
+    exitZoneEditMode();
+    resetZoneForm();
+  });
+
+  populateZoneTypeOptions('zone');
+  updateZoneKindUI();
+
   formZone.addEventListener('submit', (e) => {
     e.preventDefault();
     const payload = {
       name: document.getElementById('zoneName').value,
+      kind: zoneKindSelect.value,
       type: document.getElementById('zoneType').value,
       x: document.getElementById('zoneX').value,
       y: document.getElementById('zoneY').value,
       width: document.getElementById('zoneWidth').value,
       length: document.getElementById('zoneLength').value,
+      height: document.getElementById('zoneHeight').value,
       color: document.getElementById('zoneColor').value
     };
     if (editingZoneId) {
       store.updateZone(editingZoneId, payload);
-      editingZoneId = null;
-      formZone.querySelector('button[type=submit]').textContent = 'Add Zone';
+      exitZoneEditMode();
     } else {
       store.addZone(payload);
     }
-    formZone.reset();
-    document.getElementById('zoneColor').value = '#BC5C92';
+    resetZoneForm();
   });
 
   function renderZonesGate() {
     const wh = store.data.warehouse;
     document.getElementById('zonesGate').classList.toggle('show', !wh);
-    document.getElementById('zonesGate').textContent = 'Define the warehouse shell (Tab 1) before adding zones.';
+    document.getElementById('zonesGate').textContent = 'Define the warehouse shell (Tab 1) before adding zones or obstacles.';
     document.getElementById('zonesUI').hidden = !wh;
   }
 
@@ -365,31 +472,34 @@
     tbody.innerHTML = '';
     store.data.zones.forEach((z) => {
       const tr = document.createElement('tr');
+      tr.dataset.id = z.id;
       tr.innerHTML = `
-        <td><span class="swatch" style="background:${z.color}"></span>${escapeHtml(z.name)}</td>
+        <td class="name-cell" data-act="view" data-id="${z.id}" title="Click to edit"><span class="swatch" style="background:${z.color}"></span>${escapeHtml(z.name)}</td>
+        <td>${z.kind === 'obstacle' ? 'Obstacle' : 'Zone'}</td>
         <td>${escapeHtml(z.type)}</td>
         <td>${z.x}</td><td>${z.y}</td><td>${z.width}</td><td>${z.length}</td>
+        <td>${z.kind === 'obstacle' ? z.height + ' m' : '—'}</td>
         <td>
           <button class="icon-btn" data-act="edit" data-id="${z.id}" title="Edit">✎</button>
           <button class="icon-btn" data-act="del" data-id="${z.id}" title="Delete">✕</button>
         </td>`;
       tbody.appendChild(tr);
     });
-    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', () => {
-      if (confirm('Delete this zone?')) store.deleteZone(b.dataset.id);
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('Delete this zone/obstacle?')) store.deleteZone(b.dataset.id);
     }));
-    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => {
+    tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
+      const z = store.data.zones.find((zz) => zz.id === cell.dataset.id);
+      if (!z) return;
+      loadZoneIntoForm(z);
+      formZone.scrollIntoView({ behavior: 'smooth' });
+    }));
+    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
       const z = store.data.zones.find((zz) => zz.id === b.dataset.id);
       if (!z) return;
-      editingZoneId = z.id;
-      document.getElementById('zoneName').value = z.name;
-      document.getElementById('zoneType').value = z.type;
-      document.getElementById('zoneX').value = z.x;
-      document.getElementById('zoneY').value = z.y;
-      document.getElementById('zoneWidth').value = z.width;
-      document.getElementById('zoneLength').value = z.length;
-      document.getElementById('zoneColor').value = z.color;
-      formZone.querySelector('button[type=submit]').textContent = 'Update Zone';
+      loadZoneIntoForm(z);
       formZone.scrollIntoView({ behavior: 'smooth' });
     }));
   }
@@ -409,6 +519,7 @@
     const preset = DOOR_PRESETS[doorTypeSelect.value] || DOOR_PRESETS.regular;
     document.getElementById('doorWidth').value = preset.width;
     document.getElementById('doorHeight').value = preset.height;
+    renderDoorsPlanPreview();
   });
 
   // Populates the Wall dropdown from the current warehouse shape's edges.
@@ -423,6 +534,63 @@
     ).join('');
     if (walls.some((w) => String(w.index) === prevValue)) doorWallSelect.value = prevValue;
   }
+
+  // Reads the current (unsaved) Doors form values into a plain door-like
+  // object, for the live plan-preview highlight as the user fills it in.
+  function getDraftDoor() {
+    if (doorWallSelect.value === '') return null;
+    return {
+      wallIndex: Number(doorWallSelect.value),
+      offset: Number(document.getElementById('doorOffset').value) || 0,
+      width: Number(document.getElementById('doorWidth').value) || 0.1,
+      height: Number(document.getElementById('doorHeight').value) || 0.1,
+      type: doorTypeSelect.value,
+      label: document.getElementById('doorLabel').value || 'Door'
+    };
+  }
+
+  function renderDoorsPlanPreview() {
+    if (window.DoorsPlanView) window.DoorsPlanView.render({ door: getDraftDoor() });
+  }
+
+  const doorLiveFields = ['doorWall', 'doorOffset', 'doorWidth', 'doorHeight', 'doorLabel'];
+  doorLiveFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', renderDoorsPlanPreview);
+  });
+
+  // Populates the form with an existing door's values and puts the form
+  // into edit mode for it — used by both the name-cell click and the pencil
+  // edit button (same pattern as Bay Builder).
+  function loadDoorIntoForm(d) {
+    renderWallOptions();
+    document.getElementById('doorLabel').value = d.label;
+    doorTypeSelect.value = d.type;
+    doorWallSelect.value = d.wallIndex;
+    document.getElementById('doorOffset').value = d.offset;
+    document.getElementById('doorWidth').value = d.width;
+    document.getElementById('doorHeight').value = d.height;
+    editingDoorId = d.id;
+    formDoor.querySelector('button[type=submit]').textContent = 'Update Door';
+    document.getElementById('btnCancelDoorEdit').hidden = false;
+    renderDoorsPlanPreview();
+  }
+
+  function exitDoorEditMode() {
+    editingDoorId = null;
+    formDoor.querySelector('button[type=submit]').textContent = 'Add Door';
+    document.getElementById('btnCancelDoorEdit').hidden = true;
+  }
+
+  document.getElementById('btnCancelDoorEdit').addEventListener('click', () => {
+    exitDoorEditMode();
+    formDoor.reset();
+    doorTypeSelect.value = 'garage';
+    document.getElementById('doorWidth').value = DOOR_PRESETS.garage.width;
+    document.getElementById('doorHeight').value = DOOR_PRESETS.garage.height;
+    document.getElementById('doorOffset').value = 0;
+    renderDoorsPlanPreview();
+  });
 
   formDoor.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -445,8 +613,7 @@
       }
       if (editingDoorId) {
         store.updateDoor(editingDoorId, payload);
-        editingDoorId = null;
-        formDoor.querySelector('button[type=submit]').textContent = 'Add Door';
+        exitDoorEditMode();
       } else {
         store.addDoor(payload);
       }
@@ -455,6 +622,7 @@
       document.getElementById('doorWidth').value = DOOR_PRESETS.garage.width;
       document.getElementById('doorHeight').value = DOOR_PRESETS.garage.height;
       document.getElementById('doorOffset').value = 0;
+      renderDoorsPlanPreview();
     } catch (err) {
       console.error('Failed to save door', err);
       alert('Could not save the door: ' + err.message);
@@ -476,8 +644,9 @@
     store.data.doors.forEach((d) => {
       const wall = walls[d.wallIndex];
       const tr = document.createElement('tr');
+      tr.dataset.id = d.id;
       tr.innerHTML = `
-        <td><span class="swatch" style="background:${DOOR_COLORS[d.type]}"></span>${escapeHtml(d.label)}</td>
+        <td class="name-cell" data-act="view" data-id="${d.id}" title="Click to edit"><span class="swatch" style="background:${DOOR_COLORS[d.type]}"></span>${escapeHtml(d.label)}</td>
         <td>${d.type === 'garage' ? 'Garage / Dock' : 'Regular'}</td>
         <td>${wall ? `Wall ${d.wallIndex + 1}` : `Wall ${d.wallIndex + 1} (missing)`}</td>
         <td>${d.offset} m</td>
@@ -489,21 +658,21 @@
         </td>`;
       tbody.appendChild(tr);
     });
-    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', () => {
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
       if (confirm('Delete this door?')) store.deleteDoor(b.dataset.id);
     }));
-    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => {
+    tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
+      const d = store.data.doors.find((dd) => dd.id === cell.dataset.id);
+      if (!d) return;
+      loadDoorIntoForm(d);
+      formDoor.scrollIntoView({ behavior: 'smooth' });
+    }));
+    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
       const d = store.data.doors.find((dd) => dd.id === b.dataset.id);
       if (!d) return;
-      editingDoorId = d.id;
-      renderWallOptions();
-      document.getElementById('doorLabel').value = d.label;
-      doorTypeSelect.value = d.type;
-      doorWallSelect.value = d.wallIndex;
-      document.getElementById('doorOffset').value = d.offset;
-      document.getElementById('doorWidth').value = d.width;
-      document.getElementById('doorHeight').value = d.height;
-      formDoor.querySelector('button[type=submit]').textContent = 'Update Door';
+      loadDoorIntoForm(d);
       formDoor.scrollIntoView({ behavior: 'smooth' });
     }));
   }
@@ -922,6 +1091,8 @@
     renderLegend();
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
+    if (currentTab === 'doors') renderDoorsPlanPreview();
+    if (currentTab === 'zones') renderZonesPlanPreview();
   }
 
   store.onChange(renderAll);
