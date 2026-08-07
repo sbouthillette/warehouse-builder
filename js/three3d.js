@@ -1,6 +1,10 @@
 // three3d.js — 3D digital twin renderer using Three.js
-// Coordinate mapping: warehouse X (m) -> three.js X, warehouse Y (m) -> three.js Z,
+// Coordinate mapping: warehouse X (m) -> three.js X, warehouse Y (m) -> three.js -Z,
 // height (m) -> three.js Y (up). Bay/beam/upright dims are mm, converted to m (/1000).
+// Z is NEGATED (not just equal to Y) so that, given the camera sits on the
+// +X/+Z side looking back at the origin, warehouse Y=0 renders near/at the
+// bottom of the view and increasing Y renders toward the top — matching the
+// 2D plan's bottom-left-origin convention instead of the reverse.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -108,10 +112,10 @@ function buildWarehouseShell(wh) {
   if (!pts || pts.length < 3) return;
 
   // Floor fill. THREE.Shape lives in an XY plane; after rotating -90° about X
-  // to lay it flat, using Vector2(x, -y) here makes the result land at world
-  // (x, 0, y) — i.e. matching the same X/Z convention used by the outline
-  // lines, zones and racks below (world Z = warehouse Y).
-  const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.y)));
+  // to lay it flat, using Vector2(x, y) here (no negation) makes the result
+  // land at world (x, 0, -y) — matching the world Z = -warehouse Y convention
+  // used by the outline lines, zones and racks below.
+  const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, p.y)));
   const floorGeo = new THREE.ShapeGeometry(shape);
   const floorMat = new THREE.MeshStandardMaterial({ color: 0x211c17, side: THREE.DoubleSide });
   const floor = new THREE.Mesh(floorGeo, floorMat);
@@ -120,7 +124,7 @@ function buildWarehouseShell(wh) {
 
   // Outline: floor perimeter, ceiling perimeter, and a vertical at each corner.
   const outlineMat = new THREE.LineBasicMaterial({ color: 0xC97E0D }); // primary-2
-  const toV3 = (p, y) => new THREE.Vector3(p.x, y, p.y);
+  const toV3 = (p, y) => new THREE.Vector3(p.x, y, -p.y);
 
   const floorLoop = pts.map((p) => toV3(p, 0));
   floorLoop.push(floorLoop[0].clone());
@@ -138,7 +142,7 @@ function buildWarehouseShell(wh) {
   const bounds = window.WarehouseModel.polygonBounds(pts);
   const span = Math.max(bounds.width, bounds.length, 1);
   const grid = new THREE.GridHelper(span, Math.round(span), 0x4a3f34, 0x2a241e);
-  grid.position.set(bounds.minX + bounds.width / 2, 0.01, bounds.minY + bounds.length / 2);
+  grid.position.set(bounds.minX + bounds.width / 2, 0.01, -(bounds.minY + bounds.length / 2));
   group.add(grid);
 }
 
@@ -148,11 +152,11 @@ function buildZones(zones) {
     const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(z.color), transparent: true, opacity: 0.22, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(z.x + z.width / 2, 0.02, z.y + z.length / 2);
+    mesh.position.set(z.x + z.width / 2, 0.02, -(z.y + z.length / 2));
     group.add(mesh);
 
     const label = makeTextSprite(z.name);
-    label.position.set(z.x + z.width / 2, 0.4, z.y + z.length / 2);
+    label.position.set(z.x + z.width / 2, 0.4, -(z.y + z.length / 2));
     label.scale.set(2.5, 0.65, 1);
     group.add(label);
   });
@@ -241,7 +245,7 @@ function buildRacks(racks, store) {
 
     // position & rotate the whole rack group into world space
     rackGroup.rotation.y = rack.rotation === 90 ? Math.PI / 2 : 0;
-    rackGroup.position.set(rack.x, 0, rack.y);
+    rackGroup.position.set(rack.x, 0, -rack.y);
     group.add(rackGroup);
   });
 }
@@ -258,7 +262,7 @@ function render(store) {
 
   // frame camera on the polygon's bounding box
   const bounds = window.WarehouseModel.polygonBounds(wh.shape);
-  const target = new THREE.Vector3(bounds.minX + bounds.width / 2, 0, bounds.minY + bounds.length / 2);
+  const target = new THREE.Vector3(bounds.minX + bounds.width / 2, 0, -(bounds.minY + bounds.length / 2));
   controls.target.copy(target);
   const diag = Math.sqrt(bounds.width * bounds.width + bounds.length * bounds.length) || 10;
   camera.position.set(target.x + diag * 0.55, Math.max(wh.height * 1.4, diag * 0.4), target.z + diag * 0.55);
