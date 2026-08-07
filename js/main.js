@@ -33,6 +33,9 @@
     if (tab === 'zones' && window.ZonesPlanView) { // function declaration below is hoisted within this closure
       window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
     }
+    if (tab === 'racks' && window.RacksPlanView) { // function declaration below is hoisted within this closure
+      window.RacksPlanView.resetView({ rack: getDraftRack() });
+    }
   }
 
   // ---------------- Top bar actions (Export / Import current warehouse) ----------------
@@ -435,6 +438,10 @@
     resetZoneForm();
   });
 
+  document.getElementById('btnFitZonesPlan').addEventListener('click', () => {
+    if (window.ZonesPlanView) window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
+  });
+
   populateZoneTypeOptions('zone');
   updateZoneKindUI();
 
@@ -581,6 +588,10 @@
     formDoor.querySelector('button[type=submit]').textContent = 'Add Door';
     document.getElementById('btnCancelDoorEdit').hidden = true;
   }
+
+  document.getElementById('btnFitDoorsPlan').addEventListener('click', () => {
+    if (window.DoorsPlanView) window.DoorsPlanView.resetView({ door: getDraftDoor() });
+  });
 
   document.getElementById('btnCancelDoorEdit').addEventListener('click', () => {
     exitDoorEditMode();
@@ -811,6 +822,11 @@
     if (el) el.addEventListener('input', renderBayPreview);
   });
 
+  // baypreview3d.js's render() already recomputes the camera's framing from
+  // scratch on every call, so re-rendering the current draft is enough to
+  // reset the (OrbitControls-manipulated) camera back to the fitted default.
+  document.getElementById('btnFitBayPreview').addEventListener('click', renderBayPreview);
+
   // Populates the form with an existing template's values and puts the form
   // into edit mode for it — used by both the name-cell click and the pencil
   // edit button, so selecting a bay either way lets Save Bay Template update
@@ -937,6 +953,52 @@
   rackBayCountInput.addEventListener('input', syncBaySlotsToCount);
   renderBaySlotsTable();
 
+  // Reads the current (unsaved) Rack form values into a plain rack-footprint
+  // object, for the live plan-preview highlight as the user fills it in.
+  function getDraftRack() {
+    const bayTemplateId = rackTemplateSelect.value;
+    const bayCount = Number(rackBayCountInput.value) || 0;
+    if (!bayTemplateId || bayCount <= 0) return null;
+    const fp = store.rackFootprint({ bayTemplateId, bayCount });
+    if (!fp.lengthM) return null;
+    return {
+      x: Number(document.getElementById('rackX').value) || 0,
+      y: Number(document.getElementById('rackY').value) || 0,
+      lengthM: fp.lengthM,
+      depthM: fp.depthM,
+      rotation: Number(document.getElementById('rackRotation').value) || 0,
+      name: document.getElementById('rackName').value || ''
+    };
+  }
+
+  function renderRacksPlanPreview() {
+    if (window.RacksPlanView) window.RacksPlanView.render({ rack: getDraftRack() });
+  }
+
+  const rackLiveFields = ['rackName', 'rackBayTemplate', 'rackBayCount', 'rackRotation', 'rackX', 'rackY'];
+  rackLiveFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', renderRacksPlanPreview);
+  });
+
+  function exitRackEditMode() {
+    editingRackId = null;
+    formRack.querySelector('button[type=submit]').textContent = 'Add Rack';
+    document.getElementById('btnCancelRackEdit').hidden = true;
+  }
+
+  document.getElementById('btnFitRacksPlan').addEventListener('click', () => {
+    if (window.RacksPlanView) window.RacksPlanView.resetView({ rack: getDraftRack() });
+  });
+
+  document.getElementById('btnCancelRackEdit').addEventListener('click', () => {
+    exitRackEditMode();
+    formRack.reset();
+    draftBays = Model.defaultBays(Number(rackBayCountInput.value) || 0);
+    renderBaySlotsTable();
+    renderRacksPlanPreview();
+  });
+
   formRack.addEventListener('submit', (e) => {
     e.preventDefault();
     const payload = {
@@ -952,11 +1014,11 @@
     };
     if (editingRackId) {
       store.updateRack(editingRackId, payload);
-      editingRackId = null;
-      formRack.querySelector('button[type=submit]').textContent = 'Add Rack';
+      exitRackEditMode();
     } else {
       store.addRack(payload);
     }
+    renderRacksPlanPreview();
   });
 
   document.getElementById('btnAutoRow').addEventListener('click', () => {
@@ -1051,7 +1113,9 @@
         : Model.defaultBays(r.bayCount);
       renderBaySlotsTable();
       formRack.querySelector('button[type=submit]').textContent = 'Update Rack';
+      document.getElementById('btnCancelRackEdit').hidden = false;
       formRack.scrollIntoView({ behavior: 'smooth' });
+      renderRacksPlanPreview();
     }));
   }
 
@@ -1093,6 +1157,7 @@
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
     if (currentTab === 'doors') renderDoorsPlanPreview();
     if (currentTab === 'zones') renderZonesPlanPreview();
+    if (currentTab === 'racks') renderRacksPlanPreview();
   }
 
   store.onChange(renderAll);

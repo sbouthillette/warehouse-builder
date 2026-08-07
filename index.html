@@ -140,6 +140,9 @@
         <div id="zonesUI" hidden>
           <div class="split-editor">
             <div class="split-preview-col">
+              <div class="canvas-toolbar canvas-toolbar-right">
+                <button type="button" id="btnFitZonesPlan" class="btn btn-ghost">Fit to View</button>
+              </div>
               <div class="canvas-wrap">
                 <canvas id="zonesPlanCanvas"></canvas>
               </div>
@@ -209,6 +212,9 @@
         <div id="doorsUI" hidden>
           <div class="split-editor">
             <div class="split-preview-col">
+              <div class="canvas-toolbar canvas-toolbar-right">
+                <button type="button" id="btnFitDoorsPlan" class="btn btn-ghost">Fit to View</button>
+              </div>
               <div class="canvas-wrap">
                 <canvas id="doorsPlanCanvas"></canvas>
               </div>
@@ -261,6 +267,9 @@
 
         <div class="split-editor">
           <div class="split-preview-col">
+            <div class="canvas-toolbar canvas-toolbar-right">
+              <button type="button" id="btnFitBayPreview" class="btn btn-ghost">Fit to View</button>
+            </div>
             <div id="bayPreviewContainer" class="three-wrap"></div>
           </div>
 
@@ -339,52 +348,67 @@
         <p class="hint">Duplicate a bay template "x" times to form a rack. Place it in the warehouse and set the aisle width to the next row.</p>
         <div id="racksGate" class="gate-message"></div>
         <div id="racksUI" hidden>
-          <form id="formRack" class="card form-grid">
-            <label>Rack Name
-              <input type="text" id="rackName" placeholder="Rack A1" required />
-            </label>
-            <label>Bay Template
-              <select id="rackBayTemplate" required></select>
-            </label>
-            <label># of Bays
-              <input type="number" id="rackBayCount" min="1" step="1" value="5" required />
-            </label>
-            <label>Rotation
-              <select id="rackRotation">
-                <option value="0">0° (along X)</option>
-                <option value="90">90° (along Y)</option>
-              </select>
-            </label>
-            <label>X position (m)
-              <input type="number" id="rackX" step="0.1" value="0" required />
-            </label>
-            <label>Y position (m)
-              <input type="number" id="rackY" step="0.1" value="0" required />
-            </label>
-            <label>Aisle Width to next row (m)
-              <input type="number" id="rackAisle" min="0" step="0.1" value="3" required />
-            </label>
-            <label>Max Weight per Bay (kg)
-              <input type="number" id="rackMaxWeight" min="0" step="1" value="4000" />
-            </label>
-
-            <label class="full-row section-label">Bay Identifiers</label>
-            <div class="full-row">
-              <p class="hint">Each bay gets its own label and pallet capacity — this table stays in sync with "# of Bays" above.</p>
-              <div class="table-wrap">
-                <table id="baySlotsTable" class="data-table">
-                  <thead><tr><th>#</th><th>Label</th><th>Pallet Positions</th></tr></thead>
-                  <tbody></tbody>
-                </table>
+          <div class="split-editor">
+            <div class="split-preview-col">
+              <div class="canvas-toolbar canvas-toolbar-right">
+                <button type="button" id="btnFitRacksPlan" class="btn btn-ghost">Fit to View</button>
+              </div>
+              <div class="canvas-wrap">
+                <canvas id="racksPlanCanvas"></canvas>
               </div>
             </div>
 
-            <div class="form-actions auto-place-actions">
-              <button type="button" id="btnAutoRow" class="btn btn-ghost">Auto-place: next in same row</button>
-              <button type="button" id="btnAutoNewRow" class="btn btn-ghost">Auto-place: start new row</button>
-              <button type="submit" class="btn btn-primary">Add Rack</button>
+            <div class="split-params-col">
+              <form id="formRack" class="card form-grid">
+                <label>Rack Name
+                  <input type="text" id="rackName" placeholder="Rack A1" required />
+                </label>
+                <label>Bay Template
+                  <select id="rackBayTemplate" required></select>
+                </label>
+                <label># of Bays
+                  <input type="number" id="rackBayCount" min="1" step="1" value="5" required />
+                </label>
+                <label>Rotation
+                  <select id="rackRotation">
+                    <option value="0">0° (along X)</option>
+                    <option value="90">90° (along Y)</option>
+                  </select>
+                </label>
+                <label>X position (m)
+                  <input type="number" id="rackX" step="0.1" value="0" required />
+                </label>
+                <label>Y position (m)
+                  <input type="number" id="rackY" step="0.1" value="0" required />
+                </label>
+                <label>Aisle Width to next row (m)
+                  <input type="number" id="rackAisle" min="0" step="0.1" value="3" required />
+                </label>
+                <label>Max Weight per Bay (kg)
+                  <input type="number" id="rackMaxWeight" min="0" step="1" value="4000" />
+                </label>
+
+                <label class="full-row section-label">Bay Identifiers</label>
+                <div class="full-row">
+                  <p class="hint">Each bay gets its own label and pallet capacity — this table stays in sync with "# of Bays" above.</p>
+                  <div class="table-wrap">
+                    <table id="baySlotsTable" class="data-table">
+                      <thead><tr><th>#</th><th>Label</th><th>Pallet Positions</th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="form-actions auto-place-actions">
+                  <button type="button" id="btnAutoRow" class="btn btn-ghost">Auto-place: next in same row</button>
+                  <button type="button" id="btnAutoNewRow" class="btn btn-ghost">Auto-place: start new row</button>
+                  <button type="submit" class="btn btn-primary">Add Rack</button>
+                  <button type="button" id="btnCancelRackEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
+
           <div class="table-wrap">
             <table id="racksTable" class="data-table">
               <thead><tr><th>Name</th><th>Template</th><th>Bays</th><th>Footprint L×D×H (m)</th><th>Pos (X,Y)</th><th>Rot</th><th>Aisle (m)</th><th>Max kg/bay</th><th></th></tr></thead>

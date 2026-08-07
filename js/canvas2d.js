@@ -193,6 +193,38 @@
       ctx.setLineDash([]);
     }
 
+    // Highlights an in-progress (unsaved) rack from the Racks & Aisles form —
+    // draft is { x, y, lengthM, depthM, rotation, name } (footprint already
+    // resolved via store.rackFootprint by the caller) — so the user sees
+    // exactly where it will land and how much floor space it takes before
+    // clicking Add Rack.
+    function drawDraftRack(draft) {
+      if (!draft) return;
+      const rot = draft.rotation === 90;
+      const w = rot ? draft.depthM : draft.lengthM;
+      const h = rot ? draft.lengthM : draft.depthM;
+      const a = worldToScreen(draft.x, draft.y);
+      const b = worldToScreen(draft.x + w, draft.y + h);
+      const x = Math.min(a.sx, b.sx), y = Math.min(a.sy, b.sy);
+      const pw = Math.abs(b.sx - a.sx), ph = Math.abs(b.sy - a.sy);
+
+      ctx.fillStyle = 'rgba(242,169,60,0.3)'; // primary tint
+      ctx.fillRect(x, y, pw, ph);
+      ctx.strokeStyle = '#E2572E'; // secondary-2 — a clearly "actively editing" accent
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x, y, pw, ph);
+      ctx.setLineDash([]);
+
+      if (draft.name && pw >= 30 && ph >= 14) {
+        ctx.fillStyle = '#1a1a18'; // ink
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(draft.name, x + pw / 2, y + ph / 2 + 4);
+        ctx.textAlign = 'left';
+      }
+    }
+
     function drawRacks(racks, store) {
       racks.forEach((r) => {
         const tpl = store.getRackTemplate(r);
@@ -338,10 +370,11 @@
       ctx.lineCap = 'butt';
     }
 
-    // `draft` (optional) is { door: {...} } or { zone: {...} } — the current
-    // unsaved form state from the Doors / Zones & Obstacles tabs, highlighted
-    // on top of the normal plan. Passing nothing keeps whatever draft was
-    // last set (so pan/zoom/resize re-renders don't lose the highlight).
+    // `draft` (optional) is { door: {...} }, { zone: {...} }, or { rack: {...} }
+    // — the current unsaved form state from the Doors / Zones & Obstacles /
+    // Racks & Aisles tabs, highlighted on top of the normal plan. Passing
+    // nothing keeps whatever draft was last set (so pan/zoom/resize
+    // re-renders don't lose the highlight).
     function render(draft) {
       if (draft !== undefined) lastDraft = draft;
       resizeCanvas();
@@ -366,6 +399,7 @@
       drawZones(store.data.zones);
       if (lastDraft && lastDraft.zone) drawDraftZone(lastDraft.zone);
       drawRacks(store.data.racks, store);
+      if (lastDraft && lastDraft.rack) drawDraftRack(lastDraft.rack);
       drawDoors(store.data.doors, wh);
       if (lastDraft && lastDraft.door) drawDraftDoor(wh, lastDraft.door);
     }
@@ -401,9 +435,12 @@
   // Main "2D Plan" tab canvas — kept as window.Canvas2D for backward compatibility.
   window.Canvas2D = createPlanView(document.getElementById('canvas2d'));
 
-  // Live-preview canvases embedded in the Doors and Zones & Obstacles tabs.
+  // Live-preview canvases embedded in the Doors, Zones & Obstacles, and
+  // Racks & Aisles tabs.
   const doorsCanvas = document.getElementById('doorsPlanCanvas');
   if (doorsCanvas) window.DoorsPlanView = createPlanView(doorsCanvas);
   const zonesCanvas = document.getElementById('zonesPlanCanvas');
   if (zonesCanvas) window.ZonesPlanView = createPlanView(zonesCanvas);
+  const racksCanvas = document.getElementById('racksPlanCanvas');
+  if (racksCanvas) window.RacksPlanView = createPlanView(racksCanvas);
 })();
