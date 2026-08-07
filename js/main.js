@@ -536,11 +536,18 @@
         },
         maxWeightPerLevelKg: document.getElementById('bayMaxWeight').value
       };
+      payload.name = payload.name.trim();
+      const nameTaken = store.data.bayTemplates.some((t) =>
+        t.id !== editingBayId && t.name.trim().toLowerCase() === payload.name.toLowerCase()
+      );
+      if (nameTaken) {
+        alert(`A bay template named "${payload.name}" already exists. Choose a different name.`);
+        return;
+      }
       if (editingBayId) {
         store.updateBayTemplate(editingBayId, payload);
         lastSavedBayId = editingBayId;
-        editingBayId = null;
-        formBay.querySelector('button[type=submit]').textContent = 'Save Bay Template';
+        exitBayEditMode();
       } else {
         const created = store.addBayTemplate(payload);
         lastSavedBayId = created.id;
@@ -635,11 +642,11 @@
     if (el) el.addEventListener('input', renderBayPreview);
   });
 
-  // Populates the form with an existing template's values (used by both the
-  // name-cell click, for a quick look, and the edit button). `enterEditMode`
-  // controls whether Save Bay Template will overwrite this template (edit)
-  // or just leave the values loaded for viewing/tweaking into a new one.
-  function loadBayTemplateIntoForm(t, enterEditMode) {
+  // Populates the form with an existing template's values and puts the form
+  // into edit mode for it — used by both the name-cell click and the pencil
+  // edit button, so selecting a bay either way lets Save Bay Template update
+  // that same template instead of creating a new one.
+  function loadBayTemplateIntoForm(t) {
     document.getElementById('bayName').value = t.name;
     document.getElementById('uprightWidth').value = t.upright.width;
     document.getElementById('uprightThickness').value = t.upright.thickness;
@@ -655,12 +662,37 @@
     document.getElementById('levelGroundLevel').checked = !!t.levels.groundLevel;
     updateLevelBaseFieldState();
     document.getElementById('bayMaxWeight').value = t.maxWeightPerLevelKg;
-    if (enterEditMode) {
-      editingBayId = t.id;
-      formBay.querySelector('button[type=submit]').textContent = 'Update Bay Template';
-    }
+    editingBayId = t.id;
+    formBay.querySelector('button[type=submit]').textContent = 'Update Bay Template';
+    document.getElementById('btnCancelBayEdit').hidden = false;
     renderBayPreview();
   }
+
+  function exitBayEditMode() {
+    editingBayId = null;
+    formBay.querySelector('button[type=submit]').textContent = 'Save Bay Template';
+    document.getElementById('btnCancelBayEdit').hidden = true;
+  }
+
+  document.getElementById('btnCancelBayEdit').addEventListener('click', () => {
+    exitBayEditMode();
+    formBay.reset();
+    document.getElementById('uprightWidth').value = 90;
+    document.getElementById('uprightThickness').value = 60;
+    document.getElementById('uprightHeight').value = 7000;
+    document.getElementById('frameDepth').value = 900;
+    document.getElementById('beamHeight').value = 100;
+    document.getElementById('beamWidth').value = 2700;
+    document.getElementById('beamThickness').value = 50;
+    document.getElementById('baySpacing').value = 2700;
+    document.getElementById('levelCount').value = 4;
+    document.getElementById('levelBase').value = 150;
+    document.getElementById('levelSpacing').value = 1600;
+    document.getElementById('levelGroundLevel').checked = false;
+    document.getElementById('bayMaxWeight').value = 1000;
+    updateLevelBaseFieldState();
+    renderBayPreview();
+  });
 
   function renderBayTable() {
     const tbody = document.querySelector('#bayTable tbody');
@@ -669,7 +701,7 @@
       const tr = document.createElement('tr');
       tr.dataset.id = t.id;
       tr.innerHTML = `
-        <td class="bay-name-cell" data-act="view" data-id="${t.id}" title="Click to view this bay in the 3D preview">${escapeHtml(t.name)}</td>
+        <td class="bay-name-cell" data-act="view" data-id="${t.id}" title="Click to edit this bay">${escapeHtml(t.name)}</td>
         <td>${t.upright.width}×${t.upright.thickness}×${t.upright.height}</td>
         <td>${t.frameDepth} mm</td>
         <td>${t.beam.height}×${t.beam.width}×${t.beam.thickness}</td>
@@ -689,14 +721,14 @@
     tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
       const t = store.data.bayTemplates.find((tt) => tt.id === cell.dataset.id);
       if (!t) return;
-      loadBayTemplateIntoForm(t, false);
+      loadBayTemplateIntoForm(t);
       if (window.matchMedia('(max-width: 1100px)').matches) formBay.scrollIntoView({ behavior: 'smooth' });
     }));
     tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       const t = store.data.bayTemplates.find((tt) => tt.id === b.dataset.id);
       if (!t) return;
-      loadBayTemplateIntoForm(t, true);
+      loadBayTemplateIntoForm(t);
       formBay.scrollIntoView({ behavior: 'smooth' });
     }));
   }

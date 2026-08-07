@@ -54,12 +54,12 @@
   <div class="layout" id="mainLayout">
     <nav class="tabs">
       <button class="tab-btn active" data-tab="warehouse">1. Warehouse Shell</button>
-      <button class="tab-btn" data-tab="zones">2. Zones</button>
-      <button class="tab-btn" data-tab="doors">Doors</button>
-      <button class="tab-btn" data-tab="bays">3. Bay Builder</button>
-      <button class="tab-btn" data-tab="racks">4-6. Racks &amp; Aisles</button>
-      <button class="tab-btn" data-tab="plan2d">2D Plan</button>
-      <button class="tab-btn" data-tab="view3d">3D Digital Twin</button>
+      <button class="tab-btn" data-tab="doors">2. Doors</button>
+      <button class="tab-btn" data-tab="zones">3. Zones</button>
+      <button class="tab-btn" data-tab="bays">4. Bay Builder</button>
+      <button class="tab-btn" data-tab="racks">5. Racks &amp; Aisles</button>
+      <button class="tab-btn" data-tab="plan2d">6. 2D Plan</button>
+      <button class="tab-btn" data-tab="view3d">7. Dynamic Spatial Model (3D)</button>
     </nav>
 
     <main class="content">
@@ -286,6 +286,7 @@
 
               <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Save Bay Template</button>
+                <button type="button" id="btnCancelBayEdit" class="btn btn-ghost" hidden>Cancel</button>
               </div>
             </form>
           </div>
@@ -374,7 +375,7 @@
 
       <!-- TAB 6: 3D VIEW -->
       <section id="tab-view3d" class="tab-panel">
-        <h2>3D Digital Twin</h2>
+        <h2>Dynamic Spatial Model (3D)</h2>
         <p class="hint">Drag to orbit, scroll to zoom, right-click drag to pan.</p>
         <div id="threeContainer" class="three-wrap"></div>
       </section>
