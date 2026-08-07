@@ -67,60 +67,67 @@
         <h2>Warehouse Shell</h2>
         <p class="hint">Define the outer footprint as a polygon — rectangles, L-shapes, or any irregular outline with non-90° walls. Coordinates are in metres from the (0, 0) origin (the shape doesn't need to touch it).</p>
 
-        <div class="card form-grid">
-          <label>Name
-            <input type="text" id="whName" placeholder="Main Distribution Center" required />
-          </label>
-          <label>Clear Height (m)
-            <input type="number" id="whHeight" min="1" step="0.1" value="10" required />
-          </label>
-        </div>
+        <div class="warehouse-editor">
+          <div class="warehouse-preview-col">
+            <canvas id="shapePreview" class="shape-preview shape-preview-large"></canvas>
+          </div>
 
-        <div class="card">
-          <label class="section-label full-row">Quick Shape Generators</label>
-          <div class="shape-gen-row">
-            <div class="shape-gen-group">
-              <input type="number" id="genRectWidth" placeholder="Width (m)" step="0.1" value="50" />
-              <input type="number" id="genRectLength" placeholder="Length (m)" step="0.1" value="30" />
-              <button type="button" id="btnGenRect" class="btn btn-ghost">Generate Rectangle</button>
+          <div class="warehouse-params-col">
+            <div class="card form-grid">
+              <label>Name
+                <input type="text" id="whName" placeholder="Main Distribution Center" required />
+              </label>
+              <label>Clear Height (m)
+                <input type="number" id="whHeight" min="1" step="0.1" value="10" required />
+              </label>
             </div>
-          </div>
-          <div class="shape-gen-row">
-            <div class="shape-gen-group">
-              <input type="number" id="genLWidth" placeholder="Overall width (m)" step="0.1" value="50" />
-              <input type="number" id="genLLength" placeholder="Overall length (m)" step="0.1" value="30" />
-              <input type="number" id="genLNotchWidth" placeholder="Notch width (m)" step="0.1" value="15" />
-              <input type="number" id="genLNotchDepth" placeholder="Notch depth (m)" step="0.1" value="10" />
-              <select id="genLCorner">
-                <option value="top-right">Notch: top-right corner</option>
-                <option value="top-left">Notch: top-left corner</option>
-                <option value="bottom-right">Notch: bottom-right corner</option>
-                <option value="bottom-left">Notch: bottom-left corner</option>
-              </select>
-              <button type="button" id="btnGenL" class="btn btn-ghost">Generate L-Shape</button>
+
+            <div class="card">
+              <label class="section-label full-row">Quick Shape Generators</label>
+              <div class="shape-gen-row">
+                <div class="shape-gen-group">
+                  <input type="number" id="genRectWidth" placeholder="Width (m)" step="0.1" value="50" />
+                  <input type="number" id="genRectLength" placeholder="Length (m)" step="0.1" value="30" />
+                  <button type="button" id="btnGenRect" class="btn btn-ghost">Generate Rectangle</button>
+                </div>
+              </div>
+              <div class="shape-gen-row">
+                <div class="shape-gen-group">
+                  <input type="number" id="genLWidth" placeholder="Overall width (m)" step="0.1" value="50" />
+                  <input type="number" id="genLLength" placeholder="Overall length (m)" step="0.1" value="30" />
+                  <input type="number" id="genLNotchWidth" placeholder="Notch width (m)" step="0.1" value="15" />
+                  <input type="number" id="genLNotchDepth" placeholder="Notch depth (m)" step="0.1" value="10" />
+                  <select id="genLCorner">
+                    <option value="top-right">Notch: top-right corner</option>
+                    <option value="top-left">Notch: top-left corner</option>
+                    <option value="bottom-right">Notch: bottom-right corner</option>
+                    <option value="bottom-left">Notch: bottom-left corner</option>
+                  </select>
+                  <button type="button" id="btnGenL" class="btn btn-ghost">Generate L-Shape</button>
+                </div>
+              </div>
             </div>
+
+            <div class="card">
+              <div class="vertex-header">
+                <label class="section-label">Outline Vertices (in order)</label>
+                <button type="button" id="btnAddVertex" class="btn btn-ghost">+ Add Point</button>
+              </div>
+              <p class="hint">Trace the outline in order, like walking the walls. Any angle is fine — points don't need to be axis-aligned.</p>
+              <div class="table-wrap">
+                <table id="vertexTable" class="data-table">
+                  <thead><tr><th>#</th><th>X (m)</th><th>Y (m)</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="form-actions">
+                <button type="button" id="btnSaveWarehouse" class="btn btn-primary">Save Warehouse Shell</button>
+              </div>
+            </div>
+
+            <div id="warehouseSummary" class="card summary-card"></div>
           </div>
         </div>
-
-        <div class="card">
-          <div class="vertex-header">
-            <label class="section-label">Outline Vertices (in order)</label>
-            <button type="button" id="btnAddVertex" class="btn btn-ghost">+ Add Point</button>
-          </div>
-          <p class="hint">Trace the outline in order, like walking the walls. Any angle is fine — points don't need to be axis-aligned.</p>
-          <div class="table-wrap">
-            <table id="vertexTable" class="data-table">
-              <thead><tr><th>#</th><th>X (m)</th><th>Y (m)</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <canvas id="shapePreview" class="shape-preview"></canvas>
-          <div class="form-actions">
-            <button type="button" id="btnSaveWarehouse" class="btn btn-primary">Save Warehouse Shell</button>
-          </div>
-        </div>
-
-        <div id="warehouseSummary" class="card summary-card"></div>
       </section>
 
       <!-- TAB 2: ZONES -->
