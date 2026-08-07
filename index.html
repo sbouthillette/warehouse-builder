@@ -4,10 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Warehouse Builder</title>
-<meta name="theme-color" content="#0f172a" />
+<meta name="theme-color" content="#ffffff" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icons/icon-192.png" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -15,10 +18,10 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">▦</span>
+      <img class="brand-mark" src="assets/logo/spatialis-cube.png" alt="Spatialis OS" />
       <div>
         <h1>Warehouse Builder</h1>
-        <p class="subtitle">Digital Twin Editor</p>
+        <p class="subtitle">Spatialis OS · Digital Twin Editor</p>
       </div>
     </div>
     <div class="topbar-actions">
@@ -41,6 +44,7 @@
 
   <div id="emptyState" class="empty-state" hidden>
     <div class="empty-state-inner">
+      <img class="empty-state-logo" src="assets/logo/spatialis-horizontal-colour.png" alt="Spatialis OS" />
       <h2>No warehouses yet</h2>
       <p class="hint">Create your first warehouse to start building its digital twin. It's saved to your database as you go.</p>
       <button id="btnFirstWarehouse" class="btn btn-primary">Create Warehouse</button>
@@ -51,6 +55,7 @@
     <nav class="tabs">
       <button class="tab-btn active" data-tab="warehouse">1. Warehouse Shell</button>
       <button class="tab-btn" data-tab="zones">2. Zones</button>
+      <button class="tab-btn" data-tab="doors">Doors</button>
       <button class="tab-btn" data-tab="bays">3. Bay Builder</button>
       <button class="tab-btn" data-tab="racks">4-6. Racks &amp; Aisles</button>
       <button class="tab-btn" data-tab="plan2d">2D Plan</button>
@@ -62,31 +67,69 @@
       <!-- TAB 1: WAREHOUSE SHELL -->
       <section id="tab-warehouse" class="tab-panel active">
         <h2>Warehouse Shell</h2>
-        <p class="hint">Define the outer footprint of the warehouse. Origin is fixed at (0, 0) — the bottom-left corner. All values in metres.</p>
-        <form id="formWarehouse" class="card form-grid">
-          <label>Name
-            <input type="text" id="whName" placeholder="Main Distribution Center" required />
-          </label>
-          <label>Origin X (m)
-            <input type="number" value="0" disabled />
-          </label>
-          <label>Origin Y (m)
-            <input type="number" value="0" disabled />
-          </label>
-          <label>Width — X axis (m)
-            <input type="number" id="whWidth" min="1" step="0.1" required />
-          </label>
-          <label>Length — Y axis (m)
-            <input type="number" id="whLength" min="1" step="0.1" required />
-          </label>
-          <label>Clear Height (m)
-            <input type="number" id="whHeight" min="1" step="0.1" value="10" required />
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save Warehouse Shell</button>
+        <p class="hint">Define the outer footprint as a polygon — rectangles, L-shapes, or any irregular outline with non-90° walls. Coordinates are in metres from the (0, 0) origin (the shape doesn't need to touch it).</p>
+
+        <div class="split-editor">
+          <div class="split-preview-col">
+            <canvas id="shapePreview" class="shape-preview shape-preview-large"></canvas>
           </div>
-        </form>
-        <div id="warehouseSummary" class="card summary-card"></div>
+
+          <div class="split-params-col">
+            <div class="card form-grid">
+              <label>Name
+                <input type="text" id="whName" placeholder="Main Distribution Center" required />
+              </label>
+              <label>Clear Height (m)
+                <input type="number" id="whHeight" min="1" step="0.1" value="10" required />
+              </label>
+            </div>
+
+            <div class="card">
+              <label class="section-label full-row">Quick Shape Generators</label>
+              <div class="shape-gen-row">
+                <div class="shape-gen-group">
+                  <input type="number" id="genRectWidth" placeholder="Width (m)" step="0.1" value="50" />
+                  <input type="number" id="genRectLength" placeholder="Length (m)" step="0.1" value="30" />
+                  <button type="button" id="btnGenRect" class="btn btn-ghost">Generate Rectangle</button>
+                </div>
+              </div>
+              <div class="shape-gen-row">
+                <div class="shape-gen-group">
+                  <input type="number" id="genLWidth" placeholder="Overall width (m)" step="0.1" value="50" />
+                  <input type="number" id="genLLength" placeholder="Overall length (m)" step="0.1" value="30" />
+                  <input type="number" id="genLNotchWidth" placeholder="Notch width (m)" step="0.1" value="15" />
+                  <input type="number" id="genLNotchDepth" placeholder="Notch depth (m)" step="0.1" value="10" />
+                  <select id="genLCorner">
+                    <option value="top-right">Notch: top-right corner</option>
+                    <option value="top-left">Notch: top-left corner</option>
+                    <option value="bottom-right">Notch: bottom-right corner</option>
+                    <option value="bottom-left">Notch: bottom-left corner</option>
+                  </select>
+                  <button type="button" id="btnGenL" class="btn btn-ghost">Generate L-Shape</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="vertex-header">
+                <label class="section-label">Outline Vertices (in order)</label>
+                <button type="button" id="btnAddVertex" class="btn btn-ghost">+ Add Point</button>
+              </div>
+              <p class="hint">Trace the outline in order, like walking the walls. Any angle is fine — points don't need to be axis-aligned.</p>
+              <div class="table-wrap">
+                <table id="vertexTable" class="data-table">
+                  <thead><tr><th>#</th><th>X (m)</th><th>Y (m)</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="form-actions">
+                <button type="button" id="btnSaveWarehouse" class="btn btn-primary">Save Warehouse Shell</button>
+              </div>
+            </div>
+
+            <div id="warehouseSummary" class="card summary-card"></div>
+          </div>
+        </div>
       </section>
 
       <!-- TAB 2: ZONES -->
@@ -122,7 +165,7 @@
               <input type="number" id="zoneLength" min="0.1" step="0.1" required />
             </label>
             <label>Color
-              <input type="color" id="zoneColor" value="#4f8ef7" />
+              <input type="color" id="zoneColor" value="#BC5C92" />
             </label>
             <div class="form-actions">
               <button type="submit" class="btn btn-primary">Add Zone</button>
@@ -137,62 +180,120 @@
         </div>
       </section>
 
+      <!-- TAB 2.5: DOORS -->
+      <section id="tab-doors" class="tab-panel">
+        <h2>Doors</h2>
+        <p class="hint">Place garage/dock doors and regular (pedestrian) doors on the warehouse walls. Position is measured from the wall's starting corner, walking in the direction the outline was traced.</p>
+        <div id="doorsGate" class="gate-message"></div>
+        <div id="doorsUI" hidden>
+          <form id="formDoor" class="card form-grid">
+            <label>Door Name
+              <input type="text" id="doorLabel" placeholder="Dock Door 1" required />
+            </label>
+            <label>Type
+              <select id="doorType">
+                <option value="garage">Garage / Dock Door</option>
+                <option value="regular">Regular Door</option>
+              </select>
+            </label>
+            <label>Wall
+              <select id="doorWall" required></select>
+            </label>
+            <label>Position along wall (m) — from wall start
+              <input type="number" id="doorOffset" min="0" step="0.1" value="0" required />
+            </label>
+            <label>Width (m)
+              <input type="number" id="doorWidth" min="0.1" step="0.1" value="3" required />
+            </label>
+            <label>Height (m)
+              <input type="number" id="doorHeight" min="0.1" step="0.1" value="4" required />
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Add Door</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table id="doorsTable" class="data-table">
+              <thead><tr><th>Name</th><th>Type</th><th>Wall</th><th>Position</th><th>Width</th><th>Height</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- TAB 3: BAY BUILDER -->
       <section id="tab-bays" class="tab-panel">
         <h2>Bay Builder</h2>
         <p class="hint">Define a single bay by its structural dimensions. All values in millimetres (mm). Save it as a reusable template.</p>
-        <form id="formBay" class="card form-grid">
-          <label class="full-row section-label">Bay Template</label>
-          <label>Template Name
-            <input type="text" id="bayName" placeholder="Standard Pallet Bay" required />
-          </label>
 
-          <label class="full-row section-label">Vertical Beam (Upright)</label>
-          <label>Upright Width (mm)
-            <input type="number" id="uprightWidth" min="1" step="1" value="90" required />
-          </label>
-          <label>Upright Thickness / Depth (mm)
-            <input type="number" id="uprightDepth" min="1" step="1" value="900" required />
-          </label>
-          <label>Upright Height (mm)
-            <input type="number" id="uprightHeight" min="1" step="1" value="7000" required />
-          </label>
-
-          <label class="full-row section-label">Horizontal Beam</label>
-          <label>Beam Height / Profile (mm)
-            <input type="number" id="beamHeight" min="1" step="1" value="100" required />
-          </label>
-          <label>Beam Width / Length (mm)
-            <input type="number" id="beamWidth" min="1" step="1" value="2700" required />
-          </label>
-          <label>Beam Thickness (mm)
-            <input type="number" id="beamThickness" min="1" step="1" value="50" required />
-          </label>
-
-          <label class="full-row section-label">Bay &amp; Levels</label>
-          <label>Bay Spacing — clear opening between uprights (mm)
-            <input type="number" id="baySpacing" min="1" step="1" value="2700" required />
-          </label>
-          <label># of Levels (beam rows)
-            <input type="number" id="levelCount" min="1" step="1" value="4" required />
-          </label>
-          <label>Base Level Height (mm)
-            <input type="number" id="levelBase" min="0" step="1" value="150" required />
-          </label>
-          <label>Level Spacing (mm)
-            <input type="number" id="levelSpacing" min="1" step="1" value="1600" required />
-          </label>
-          <label>Max Weight per Level (kg)
-            <input type="number" id="bayMaxWeight" min="0" step="1" value="1000" />
-          </label>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Save Bay Template</button>
+        <div class="split-editor">
+          <div class="split-preview-col">
+            <div id="bayPreviewContainer" class="three-wrap"></div>
           </div>
-        </form>
+
+          <div class="split-params-col">
+            <form id="formBay" class="card form-grid">
+              <label class="full-row section-label">Bay Template</label>
+              <label>Template Name
+                <input type="text" id="bayName" placeholder="Standard Pallet Bay" required />
+              </label>
+
+              <label class="full-row section-label">Vertical Beam (Upright) — front &amp; back posts</label>
+              <label>Upright Width (mm)
+                <input type="number" id="uprightWidth" min="1" step="1" value="90" required />
+              </label>
+              <label>Upright Thickness (mm) — each post's own profile
+                <input type="number" id="uprightThickness" min="1" step="1" value="60" required />
+              </label>
+              <label>Upright Height (mm)
+                <input type="number" id="uprightHeight" min="1" step="1" value="7000" required />
+              </label>
+              <label>Frame Depth (mm) — front-to-back post spacing
+                <input type="number" id="frameDepth" min="1" step="1" value="900" required />
+              </label>
+
+              <label class="full-row section-label">Horizontal Beam</label>
+              <label>Beam Height / Profile (mm)
+                <input type="number" id="beamHeight" min="1" step="1" value="100" required />
+              </label>
+              <label>Beam Width / Length (mm)
+                <input type="number" id="beamWidth" min="1" step="1" value="2700" required />
+              </label>
+              <label>Beam Thickness (mm)
+                <input type="number" id="beamThickness" min="1" step="1" value="50" required />
+              </label>
+
+              <label class="full-row section-label">Bay &amp; Levels</label>
+              <label>Bay Spacing — clear opening between uprights (mm)
+                <input type="number" id="baySpacing" min="1" step="1" value="2700" required />
+              </label>
+              <label># of Levels (beam rows)
+                <input type="number" id="levelCount" min="1" step="1" value="4" required />
+              </label>
+              <label class="full-row checkbox-row">
+                <input type="checkbox" id="levelGroundLevel" />
+                Bottom level rests directly on the floor (no beam)
+              </label>
+              <label id="levelBaseLabel">Base Level Height — first beam's height above the floor (mm)
+                <input type="number" id="levelBase" min="0" step="1" value="150" required />
+              </label>
+              <label>Level Spacing — clear opening between beam faces (mm)
+                <input type="number" id="levelSpacing" min="1" step="1" value="1600" required />
+              </label>
+              <label>Max Weight per Level (kg)
+                <input type="number" id="bayMaxWeight" min="0" step="1" value="1000" />
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Bay Template</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <div class="table-wrap">
           <table id="bayTable" class="data-table">
-            <thead><tr><th>Name</th><th>Upright (W×D×H mm)</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Upright (W×T×H mm)</th><th>Frame Depth</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -232,6 +333,18 @@
             <label>Max Weight per Bay (kg)
               <input type="number" id="rackMaxWeight" min="0" step="1" value="4000" />
             </label>
+
+            <label class="full-row section-label">Bay Identifiers</label>
+            <div class="full-row">
+              <p class="hint">Each bay gets its own label and pallet capacity — this table stays in sync with "# of Bays" above.</p>
+              <div class="table-wrap">
+                <table id="baySlotsTable" class="data-table">
+                  <thead><tr><th>#</th><th>Label</th><th>Pallet Positions</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
             <div class="form-actions auto-place-actions">
               <button type="button" id="btnAutoRow" class="btn btn-ghost">Auto-place: next in same row</button>
               <button type="button" id="btnAutoNewRow" class="btn btn-ghost">Auto-place: start new row</button>
@@ -281,6 +394,7 @@
 <script src="js/model.js"></script>
 <script src="js/canvas2d.js"></script>
 <script type="module" src="js/three3d.js"></script>
+<script type="module" src="js/baypreview3d.js"></script>
 <script src="js/main.js"></script>
 <script>
 if ('serviceWorker' in navigator) {

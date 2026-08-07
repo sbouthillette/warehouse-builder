@@ -1,5 +1,5 @@
 // sw.js — basic offline app-shell cache for Warehouse Builder PWA
-const CACHE_NAME = 'warehouse-builder-v1';
+const CACHE_NAME = 'warehouse-builder-v10';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,8 +9,11 @@ const APP_SHELL = [
   './js/main.js',
   './js/canvas2d.js',
   './js/three3d.js',
+  './js/baypreview3d.js',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './assets/logo/spatialis-cube.png',
+  './assets/logo/spatialis-horizontal-colour.png'
 ];
 
 self.addEventListener('install', (event) => {

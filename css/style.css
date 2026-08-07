@@ -1,14 +1,47 @@
+/* Warehouse Builder — themed on the Spatialis OS style guide v1.1 (July 2026) */
+
 :root {
-  --bg: #0f172a;
-  --panel: #16213a;
-  --panel-2: #1c2942;
-  --border: #2b3a5a;
-  --text: #e6ecf5;
-  --text-dim: #93a2bd;
-  --accent: #4f8ef7;
-  --accent-2: #22c58b;
-  --danger: #f76a6a;
-  --radius: 10px;
+  /* Brand — Primary (amber gold) */
+  --primary-light: #FCEACF;
+  --primary: #F2A93C;
+  --primary-2: #C97E0D;
+  --primary-dark: #734808;
+
+  /* Brand — Secondary (coral orange) */
+  --secondary-light: #F7D0C5;
+  --secondary: #E98162;
+  --secondary-2: #E2572E;
+
+  /* Brand — Tertiary (plum-burgundy) */
+  --tertiary-light: #ECD0DF;
+  --tertiary: #BC5C92;
+  --tertiary-dark: #6B2C4F;
+
+  /* Status system — pale bg + dark text pairs, for light surfaces only */
+  --status-neutral-bg: #eceae4;   --status-neutral-text: #5f5e5a;
+  --status-progress-bg: #e6f1fb;  --status-progress-text: #0c447c;
+  --status-success-bg: #eaf3de;   --status-success-text: #27500a;
+  --status-warning-bg: #faeeda;   --status-warning-text: #633806;
+  --status-danger-bg: #fcebeb;    --status-danger-text: #791f1f;
+
+  /* Base palette */
+  --ink: #1a1a18;
+  --ink-secondary: #5f5e5a;
+  --surface: #f4f3f0;
+  --border: #e0ded8;
+  --background: #ffffff;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
 }
 
 * { box-sizing: border-box; }
@@ -16,9 +49,10 @@
 html, body {
   height: 100%;
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--background);
+  color: var(--ink);
+  font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 400;
 }
 
 #app { display: flex; flex-direction: column; height: 100vh; }
@@ -27,66 +61,85 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
-  background: var(--panel);
+  padding: var(--sp-3) var(--sp-6);
+  background: var(--background);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand-mark { font-size: 28px; color: var(--accent); }
-.brand h1 { font-size: 16px; margin: 0; font-weight: 700; letter-spacing: .3px; }
-.brand .subtitle { margin: 0; font-size: 11px; color: var(--text-dim); }
+.brand { display: flex; align-items: center; gap: var(--sp-3); }
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+/* Logotype role: Barlow Condensed 700 — the one place weight 700 is allowed */
+.brand h1 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: var(--ink);
+}
+.brand .subtitle { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-secondary); }
 
-.topbar-actions { display: flex; align-items: center; gap: 8px; }
-.save-status { font-size: 11px; color: var(--text-dim); margin-right: 6px; }
+.topbar-actions { display: flex; align-items: center; gap: var(--sp-2); }
+.save-status { font-size: 13px; color: var(--ink-secondary); margin-right: var(--sp-1); }
 
 .btn {
   border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--text);
-  padding: 7px 12px;
-  border-radius: 8px;
-  font-size: 12.5px;
+  background: var(--background);
+  color: var(--ink);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
-  transition: background .15s, border-color .15s;
+  transition: background .15s, border-color .15s, color .15s;
 }
-.btn:hover { background: #23324f; border-color: var(--accent); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.btn-primary:hover { background: #3d7de0; }
-.btn-ghost { background: transparent; }
-.btn-danger-ghost { background: transparent; color: var(--danger); border-color: #5a2b3a; }
-.btn-danger-ghost:hover { background: #2a1620; border-color: var(--danger); }
+.btn:hover { background: var(--surface); border-color: var(--primary-2); }
+.btn-primary { background: var(--secondary-2); border-color: var(--secondary-2); color: #fff; }
+.btn-primary:hover { background: var(--secondary); border-color: var(--secondary); }
+.btn-ghost { background: var(--background); }
+.btn-danger-ghost { background: var(--background); color: var(--status-danger-text); border-color: var(--border); }
+.btn-danger-ghost:hover { background: var(--status-danger-bg); border-color: var(--status-danger-text); }
 .file-btn { display: inline-flex; align-items: center; }
 .icon-btn {
-  background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px;
-  padding: 4px 8px;
+  background: transparent; border: none; color: var(--ink-secondary); cursor: pointer; font-size: 14px;
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
 }
-.icon-btn:hover { color: var(--danger); }
+.icon-btn:hover { color: var(--status-danger-text); background: var(--status-danger-bg); }
 
 .switcherbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  background: var(--panel-2);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .switcher-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--ink-secondary);
 }
 .switcher-label select {
-  background: var(--bg);
+  background: var(--background);
   border: 1px solid var(--border);
-  color: var(--text);
-  padding: 7px 10px;
-  border-radius: 7px;
-  font-size: 13px;
+  color: var(--ink);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-family: 'Barlow', sans-serif;
+  font-size: 14px;
   min-width: 220px;
 }
 
@@ -95,26 +148,27 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: var(--sp-8);
 }
 .empty-state[hidden] { display: none; }
 .empty-state-inner {
   text-align: center;
   max-width: 420px;
 }
-.empty-state-inner h2 { margin-bottom: 8px; }
-.empty-state-inner .hint { margin: 0 auto 18px; }
+.empty-state-logo { width: 220px; max-width: 60%; height: auto; margin: 0 auto var(--sp-6); display: block; }
+.empty-state-inner h2 { margin-bottom: var(--sp-2); }
+.empty-state-inner .hint { margin: 0 auto var(--sp-4); }
 
 .layout { display: flex; flex: 1; min-height: 0; }
 
 .tabs {
   width: 220px;
   flex-shrink: 0;
-  background: var(--panel);
+  background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 12px 0;
+  padding: var(--sp-3) 0;
   overflow-y: auto;
 }
 
@@ -122,117 +176,241 @@ html, body {
   text-align: left;
   background: transparent;
   border: none;
-  color: var(--text-dim);
-  padding: 12px 18px;
-  font-size: 13px;
+  color: var(--ink-secondary);
+  padding: var(--sp-3) var(--sp-4);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
   cursor: pointer;
   border-left: 3px solid transparent;
 }
-.tab-btn:hover { color: var(--text); background: var(--panel-2); }
-.tab-btn.active { color: var(--text); border-left-color: var(--accent); background: var(--panel-2); font-weight: 600; }
+.tab-btn:hover { color: var(--ink); background: var(--background); }
+.tab-btn.active { color: var(--ink); border-left-color: var(--primary-2); background: var(--primary-light); }
 
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px 60px;
+  padding: var(--sp-6) 28px 60px;
 }
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-h2 { margin: 0 0 6px; font-size: 20px; }
-.hint { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; max-width: 720px; }
+/* Page title (h1) role: Barlow Semi Condensed 500 24px — used for each tab's heading */
+h2 {
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.3;
+  margin: 0 0 var(--sp-2);
+  color: var(--ink);
+}
+.hint { color: var(--ink-secondary); font-size: 14px; line-height: 1.6; margin: 0 0 var(--sp-4); max-width: 720px; }
 
 .card {
-  background: var(--panel);
+  background: var(--background);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px;
-  margin-bottom: 20px;
+  border-radius: var(--radius-md);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-4);
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px 16px;
+  gap: var(--sp-4);
   max-width: 900px;
 }
 
 .form-grid label {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: var(--sp-1);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
 }
 
 .form-grid input, .form-grid select {
-  background: var(--bg);
+  background: var(--background);
   border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 10px;
-  border-radius: 7px;
-  font-size: 13px;
+  color: var(--ink);
+  padding: var(--sp-3);
+  border-radius: var(--radius-sm);
+  font-family: 'Barlow', sans-serif;
+  font-size: 14px;
 }
-.form-grid input:focus, .form-grid select:focus { outline: none; border-color: var(--accent); }
+.form-grid input:focus, .form-grid select:focus { outline: none; border-color: var(--primary-2); }
 .form-grid input:disabled { opacity: .5; }
 
+/* Caption / metadata role: Barlow 400 12px, used here as small branded section labels */
 .section-label {
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.4;
   text-transform: uppercase;
   letter-spacing: .6px;
-  color: var(--accent);
-  margin-top: 8px;
-  font-weight: 700;
+  color: var(--primary-2);
+  margin-top: var(--sp-2);
+  font-weight: 500;
 }
 .full-row { grid-column: 1 / -1; }
 
-.form-actions { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: var(--sp-2) !important;
+  font-size: 14px;
+  color: var(--ink);
+}
+.checkbox-row input[type="checkbox"] { width: auto; accent-color: var(--secondary-2); }
+
+.form-actions { grid-column: 1 / -1; display: flex; gap: var(--sp-2); margin-top: var(--sp-1); flex-wrap: wrap; }
 .auto-place-actions { justify-content: flex-start; }
 
-.summary-card { font-size: 13px; line-height: 1.7; }
-.summary-card b { color: var(--accent); }
+.summary-card { font-size: 14px; line-height: 1.7; color: var(--ink); }
+.summary-card b { color: var(--primary-2); }
 
 .gate-message {
-  color: var(--text-dim);
-  font-size: 13px;
-  background: var(--panel);
+  color: var(--ink-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  background: var(--surface);
   border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
   display: none;
 }
 .gate-message.show { display: block; }
+
+.shape-gen-row { margin-bottom: var(--sp-4); }
+.shape-gen-row:last-child { margin-bottom: 0; }
+.shape-gen-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+.shape-gen-group input, .shape-gen-group select {
+  background: var(--background);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-family: 'Barlow', sans-serif;
+  font-size: 13px;
+  width: 150px;
+}
+
+.vertex-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+
+.shape-preview {
+  width: 100%;
+  height: 260px;
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: var(--sp-4);
+}
+
+/* Split-editor layout: preview in the middle, parameters in a fixed-width
+   column on the right. Sidebar nav (.tabs) is untouched — this only splits
+   the content area within a tab. Shared by the Warehouse Shell tab and the
+   Bay Builder tab. */
+.split-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+}
+.split-preview-col {
+  flex: 1;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+.split-params-col {
+  width: 380px;
+  flex-shrink: 0;
+}
+.shape-preview-large {
+  margin-top: 0;
+  height: calc(100vh - 260px);
+  min-height: 420px;
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 1100px) {
+  .split-editor { flex-direction: column; }
+  .split-preview-col { position: static; width: 100%; }
+  .split-params-col { width: 100%; }
+  .shape-preview-large { height: 360px; }
+}
+
+.data-table input[type="number"] {
+  background: var(--background);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-family: 'Barlow', sans-serif;
+  font-size: 13px;
+  width: 90px;
+}
 
 .table-wrap { overflow-x: auto; }
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
-  background: var(--panel);
+  font-size: 14px;
+  background: var(--background);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .data-table th, .data-table td {
   text-align: left;
-  padding: 9px 12px;
+  padding: var(--sp-3);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.data-table th { color: var(--text-dim); font-weight: 600; background: var(--panel-2); }
+.data-table th {
+  color: var(--ink-secondary);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  background: var(--surface);
+}
+.data-table td { color: var(--ink); font-weight: 400; }
 .data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: #1a2540; }
-.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.data-table tr:hover td { background: var(--surface); }
 
-.canvas-toolbar { margin-bottom: 10px; }
-.legend { font-size: 12px; color: var(--text-dim); }
-.legend .chip { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; }
+.bay-name-cell { cursor: pointer; color: var(--primary-2); font-weight: 500; }
+.bay-name-cell:hover { text-decoration: underline; }
 
+@keyframes rowFlash {
+  0% { background: var(--primary-light); }
+  100% { background: transparent; }
+}
+.row-flash td { animation: rowFlash 1.5s ease-out; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: var(--sp-2); vertical-align: middle; }
+
+.canvas-toolbar { margin-bottom: var(--sp-3); }
+.legend { font-size: 13px; color: var(--ink-secondary); }
+.legend .chip { display: inline-flex; align-items: center; gap: var(--sp-1); margin-right: var(--sp-4); }
+
+/* The 2D/3D viewports sit on the light Spatialis surface tone (not a dark
+   "hero" panel) so the whole app stays visually consistent; racks/outline
+   use saturated brand + rack colors for contrast against it instead. */
 .canvas-wrap {
-  background: #0b1120;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   height: calc(100vh - 230px);
   min-height: 400px;
 }
@@ -240,9 +418,9 @@ h2 { margin: 0 0 6px; font-size: 20px; }
 #canvas2d:active { cursor: grabbing; }
 
 .three-wrap {
-  background: #05070c;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   height: calc(100vh - 230px);
   min-height: 400px;
   position: relative;
@@ -251,7 +429,7 @@ h2 { margin: 0 0 6px; font-size: 20px; }
 
 @media (max-width: 800px) {
   .layout { flex-direction: column; }
-  .tabs { width: 100%; flex-direction: row; overflow-x: auto; padding: 6px; }
+  .tabs { width: 100%; flex-direction: row; overflow-x: auto; padding: var(--sp-2); }
   .tab-btn { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
-  .tab-btn.active { border-bottom-color: var(--accent); }
+  .tab-btn.active { border-bottom-color: var(--primary-2); }
 }
