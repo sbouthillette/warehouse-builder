@@ -70,11 +70,24 @@
         <p class="hint">Define the outer footprint as a polygon — rectangles, L-shapes, or any irregular outline with non-90° walls. Coordinates are in metres from the (0, 0) origin (the shape doesn't need to touch it).</p>
 
         <div class="split-editor">
-          <div class="split-preview-col">
-            <canvas id="shapePreview" class="shape-preview shape-preview-large"></canvas>
+          <div class="split-main-col">
+            <div class="split-preview-col">
+              <canvas id="shapePreview" class="shape-preview shape-preview-large"></canvas>
+            </div>
+
+            <div class="table-wrap">
+              <table id="wallDetailsTable" class="data-table">
+                <thead><tr><th>Wall #</th><th>Origin (X, Y)</th><th>End (X, Y)</th><th>Length (m)</th><th>Angle (°)</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
 
           <div class="split-params-col">
+            <div class="form-actions form-actions-sticky">
+              <button type="button" id="btnSaveWarehouse" class="btn btn-primary">Save Warehouse Shell</button>
+            </div>
+
             <div class="card form-grid">
               <label>Name
                 <input type="text" id="whName" placeholder="Main Distribution Center" required />
@@ -122,9 +135,6 @@
                   <tbody></tbody>
                 </table>
               </div>
-              <div class="form-actions">
-                <button type="button" id="btnSaveWarehouse" class="btn btn-primary">Save Warehouse Shell</button>
-              </div>
             </div>
 
             <div id="warehouseSummary" class="card summary-card"></div>
@@ -139,17 +149,30 @@
         <div id="zonesGate" class="gate-message"></div>
         <div id="zonesUI" hidden>
           <div class="split-editor">
-            <div class="split-preview-col">
-              <div class="canvas-toolbar canvas-toolbar-right">
-                <button type="button" id="btnFitZonesPlan" class="btn btn-ghost">Fit to View</button>
+            <div class="split-main-col">
+              <div class="split-preview-col">
+                <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnFitZonesPlan" class="btn btn-ghost">Fit to View</button>
+                </div>
+                <div class="canvas-wrap">
+                  <canvas id="zonesPlanCanvas"></canvas>
+                </div>
               </div>
-              <div class="canvas-wrap">
-                <canvas id="zonesPlanCanvas"></canvas>
+
+              <div class="table-wrap">
+                <table id="zonesTable" class="data-table">
+                  <thead><tr><th>Name</th><th>Kind</th><th>Type</th><th>X</th><th>Y</th><th>Width</th><th>Length</th><th>Height</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
 
             <div class="split-params-col">
               <form id="formZone" class="card form-grid">
+                <div class="form-actions form-actions-sticky full-row">
+                  <button type="submit" class="btn btn-primary">Add Zone</button>
+                  <button type="button" id="btnCancelZoneEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
                 <label>Kind
                   <select id="zoneKind">
                     <option value="zone">Zone (flat)</option>
@@ -187,19 +210,8 @@
                 <label>Color
                   <input type="color" id="zoneColor" value="#BC5C92" />
                 </label>
-                <div class="form-actions">
-                  <button type="submit" class="btn btn-primary">Add Zone</button>
-                  <button type="button" id="btnCancelZoneEdit" class="btn btn-ghost" hidden>Cancel</button>
-                </div>
               </form>
             </div>
-          </div>
-
-          <div class="table-wrap">
-            <table id="zonesTable" class="data-table">
-              <thead><tr><th>Name</th><th>Kind</th><th>Type</th><th>X</th><th>Y</th><th>Width</th><th>Length</th><th>Height</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
           </div>
         </div>
       </section>
@@ -211,17 +223,30 @@
         <div id="doorsGate" class="gate-message"></div>
         <div id="doorsUI" hidden>
           <div class="split-editor">
-            <div class="split-preview-col">
-              <div class="canvas-toolbar canvas-toolbar-right">
-                <button type="button" id="btnFitDoorsPlan" class="btn btn-ghost">Fit to View</button>
+            <div class="split-main-col">
+              <div class="split-preview-col">
+                <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnFitDoorsPlan" class="btn btn-ghost">Fit to View</button>
+                </div>
+                <div class="canvas-wrap">
+                  <canvas id="doorsPlanCanvas"></canvas>
+                </div>
               </div>
-              <div class="canvas-wrap">
-                <canvas id="doorsPlanCanvas"></canvas>
+
+              <div class="table-wrap">
+                <table id="doorsTable" class="data-table">
+                  <thead><tr><th>Name</th><th>Type</th><th>Wall</th><th>Position</th><th>Width</th><th>Height</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
 
             <div class="split-params-col">
               <form id="formDoor" class="card form-grid">
+                <div class="form-actions form-actions-sticky full-row">
+                  <button type="submit" class="btn btn-primary">Add Door</button>
+                  <button type="button" id="btnCancelDoorEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
                 <label>Door Name
                   <input type="text" id="doorLabel" placeholder="Dock Door 1" required />
                 </label>
@@ -243,19 +268,8 @@
                 <label>Height (m)
                   <input type="number" id="doorHeight" min="0.1" step="0.1" value="4" required />
                 </label>
-                <div class="form-actions">
-                  <button type="submit" class="btn btn-primary">Add Door</button>
-                  <button type="button" id="btnCancelDoorEdit" class="btn btn-ghost" hidden>Cancel</button>
-                </div>
               </form>
             </div>
-          </div>
-
-          <div class="table-wrap">
-            <table id="doorsTable" class="data-table">
-              <thead><tr><th>Name</th><th>Type</th><th>Wall</th><th>Position</th><th>Width</th><th>Height</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
           </div>
         </div>
       </section>
@@ -266,11 +280,20 @@
         <p class="hint">Define a single bay by its structural dimensions. All values in millimetres (mm). Save it as a reusable template.</p>
 
         <div class="split-editor">
-          <div class="split-preview-col">
-            <div class="canvas-toolbar canvas-toolbar-right">
-              <button type="button" id="btnFitBayPreview" class="btn btn-ghost">Fit to View</button>
+          <div class="split-main-col">
+            <div class="split-preview-col">
+              <div class="canvas-toolbar canvas-toolbar-right">
+                <button type="button" id="btnFitBayPreview" class="btn btn-ghost">Fit to View</button>
+              </div>
+              <div id="bayPreviewContainer" class="three-wrap"></div>
             </div>
-            <div id="bayPreviewContainer" class="three-wrap"></div>
+
+            <div class="table-wrap">
+              <table id="bayTable" class="data-table">
+                <thead><tr><th>Name</th><th>Upright (W×T×H mm)</th><th>Frame Depth</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
 
           <div class="split-params-col">
@@ -333,13 +356,6 @@
             </form>
           </div>
         </div>
-
-        <div class="table-wrap">
-          <table id="bayTable" class="data-table">
-            <thead><tr><th>Name</th><th>Upright (W×T×H mm)</th><th>Frame Depth</th><th>Beam (H×W×T mm)</th><th>Bay Spacing</th><th>Levels</th><th>Max kg/level</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
       </section>
 
       <!-- TAB 4: RACKS -->
@@ -349,17 +365,30 @@
         <div id="racksGate" class="gate-message"></div>
         <div id="racksUI" hidden>
           <div class="split-editor">
-            <div class="split-preview-col">
-              <div class="canvas-toolbar canvas-toolbar-right">
-                <button type="button" id="btnFitRacksPlan" class="btn btn-ghost">Fit to View</button>
+            <div class="split-main-col">
+              <div class="split-preview-col">
+                <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnFitRacksPlan" class="btn btn-ghost">Fit to View</button>
+                </div>
+                <div class="canvas-wrap">
+                  <canvas id="racksPlanCanvas"></canvas>
+                </div>
               </div>
-              <div class="canvas-wrap">
-                <canvas id="racksPlanCanvas"></canvas>
+
+              <div class="table-wrap">
+                <table id="racksTable" class="data-table">
+                  <thead><tr><th>Name</th><th>Template</th><th>Bays</th><th>Footprint L×D×H (m)</th><th>Pos (X,Y)</th><th>Rot</th><th>Aisle (m)</th><th>Max kg/bay</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
               </div>
             </div>
 
             <div class="split-params-col">
               <form id="formRack" class="card form-grid">
+                <div class="form-actions form-actions-sticky full-row">
+                  <button type="submit" class="btn btn-primary">Add Rack</button>
+                  <button type="button" id="btnCancelRackEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
                 <label>Rack Name
                   <input type="text" id="rackName" placeholder="Rack A1" required />
                 </label>
@@ -402,18 +431,9 @@
                 <div class="form-actions auto-place-actions">
                   <button type="button" id="btnAutoRow" class="btn btn-ghost">Auto-place: next in same row</button>
                   <button type="button" id="btnAutoNewRow" class="btn btn-ghost">Auto-place: start new row</button>
-                  <button type="submit" class="btn btn-primary">Add Rack</button>
-                  <button type="button" id="btnCancelRackEdit" class="btn btn-ghost" hidden>Cancel</button>
                 </div>
               </form>
             </div>
-          </div>
-
-          <div class="table-wrap">
-            <table id="racksTable" class="data-table">
-              <thead><tr><th>Name</th><th>Template</th><th>Bays</th><th>Footprint L×D×H (m)</th><th>Pos (X,Y)</th><th>Rot</th><th>Aisle (m)</th><th>Max kg/bay</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
           </div>
         </div>
       </section>

@@ -318,28 +318,39 @@ h2 {
   margin-top: var(--sp-4);
 }
 
-/* Split-editor layout: preview in the middle, parameters in a fixed-width
-   column on the right. Sidebar nav (.tabs) is untouched — this only splits
-   the content area within a tab. Shared by the Warehouse Shell tab and the
-   Bay Builder tab. */
+/* Split-editor layout: a main column (preview + the item list below it) on
+   the left, parameters in a fixed-width column on the right. Sidebar nav
+   (.tabs) is untouched — this only splits the content area within a tab.
+   Shared by the Warehouse Shell, Doors, Zones & Obstacles, Bay Builder and
+   Racks & Aisles tabs. */
 .split-editor {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-6);
 }
-.split-preview-col {
+/* Left/main column: preview on top, item list below it, both narrowed to
+   make room for the params column beside them (rather than the list
+   spanning full width beneath the whole split-editor). */
+.split-main-col {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+.split-preview-col {
   position: sticky;
   top: 0;
 }
 .split-params-col {
   width: 380px;
   flex-shrink: 0;
-  /* Bounded to (roughly) the preview column's height and scrollable on its
-     own, so a long form (e.g. Bay Builder) never pushes the item list at
-     the bottom of the tab out of view — the page itself doesn't grow. */
-  max-height: calc((100vh - 230px) * 0.75);
+  /* Pinned in the viewport and scrollable on its own, independent of how
+     tall the preview + item list on the left get — so the form/menu stays
+     visible and reachable no matter how long the list below grows. */
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 170px);
   overflow-y: auto;
 }
 /* Pins the Save/Update (+ Cancel) button to the top of the scrolling
@@ -356,17 +367,18 @@ h2 {
 }
 .shape-preview-large {
   margin-top: 0;
-  height: calc(100vh - 260px);
-  min-height: 420px;
+  height: calc((100vh - 260px) * 0.75);
+  min-height: 320px;
   border-radius: var(--radius-md);
 }
 
 @media (max-width: 1100px) {
   .split-editor { flex-direction: column; }
+  .split-main-col { width: 100%; }
   .split-preview-col { position: static; width: 100%; }
-  .split-params-col { width: 100%; max-height: none; overflow-y: visible; }
+  .split-params-col { position: static; width: 100%; max-height: none; overflow-y: visible; }
   .form-actions-sticky { position: static; }
-  .shape-preview-large { height: 360px; }
+  .shape-preview-large { height: 300px; }
 }
 
 .data-table input[type="number"] {

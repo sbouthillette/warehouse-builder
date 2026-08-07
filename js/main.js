@@ -286,6 +286,31 @@
       ctx.fillStyle = '#E2572E'; // secondary-2
       ctx.beginPath(); ctx.arc(s.sx, s.sy, 3, 0, Math.PI * 2); ctx.fill();
     }
+
+    renderWallDetailsTable();
+  }
+
+  // Wall-by-wall breakdown of the shape currently being edited (origin,
+  // end point, length, angle) — walking the outline in the same order/
+  // direction it was traced, matching how doors reference "Wall 1", "Wall 2"
+  // etc. Recomputed live from draftShape, same as the preview canvas.
+  function renderWallDetailsTable() {
+    const tbody = document.querySelector('#wallDetailsTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (draftShape.length < 2) return;
+    const walls = Model.wallSegments(draftShape);
+    walls.forEach((wall) => {
+      const angleDeg = (wall.angle * 180) / Math.PI;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>Wall ${wall.index + 1}</td>
+        <td>${wall.p1.x.toFixed(2)}, ${wall.p1.y.toFixed(2)}</td>
+        <td>${wall.p2.x.toFixed(2)}, ${wall.p2.y.toFixed(2)}</td>
+        <td>${wall.length.toFixed(2)}</td>
+        <td>${angleDeg.toFixed(1)}</td>`;
+      tbody.appendChild(tr);
+    });
   }
 
   document.getElementById('btnAddVertex').addEventListener('click', () => {
