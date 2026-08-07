@@ -13,8 +13,8 @@ let ready = false;
 function init() {
   if (!container) return;
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x05070c);
-  scene.fog = new THREE.Fog(0x05070c, 40, 220);
+  scene.background = new THREE.Color(0x1a1a18); // ink — matches the viewport chrome
+  scene.fog = new THREE.Fog(0x1a1a18, 40, 220);
 
   camera = new THREE.PerspectiveCamera(50, containerAspect(), 0.1, 2000);
   camera.position.set(30, 25, 30);
@@ -33,7 +33,7 @@ function init() {
   const dir = new THREE.DirectionalLight(0xffffff, 0.9);
   dir.position.set(50, 80, 20);
   scene.add(dir);
-  const dir2 = new THREE.DirectionalLight(0x88aaff, 0.3);
+  const dir2 = new THREE.DirectionalLight(0xF2A93C, 0.25); // warm amber fill light
   dir2.position.set(-40, 30, -40);
   scene.add(dir2);
 
@@ -73,10 +73,10 @@ function makeTextSprite(text) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   canvas.width = 256; canvas.height = 64;
-  ctx.fillStyle = 'rgba(15,23,42,0.85)';
+  ctx.fillStyle = 'rgba(26,26,24,0.85)'; // ink
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.font = 'bold 28px sans-serif';
-  ctx.fillStyle = '#f7c56a';
+  ctx.fillStyle = '#F2A93C'; // primary
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -113,13 +113,13 @@ function buildWarehouseShell(wh) {
   // lines, zones and racks below (world Z = warehouse Y).
   const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.y)));
   const floorGeo = new THREE.ShapeGeometry(shape);
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x121a2e, side: THREE.DoubleSide });
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x211c17, side: THREE.DoubleSide });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   group.add(floor);
 
   // Outline: floor perimeter, ceiling perimeter, and a vertical at each corner.
-  const outlineMat = new THREE.LineBasicMaterial({ color: 0x4f8ef7 });
+  const outlineMat = new THREE.LineBasicMaterial({ color: 0xC97E0D }); // primary-2
   const toV3 = (p, y) => new THREE.Vector3(p.x, y, p.y);
 
   const floorLoop = pts.map((p) => toV3(p, 0));
@@ -137,7 +137,7 @@ function buildWarehouseShell(wh) {
 
   const bounds = window.WarehouseModel.polygonBounds(pts);
   const span = Math.max(bounds.width, bounds.length, 1);
-  const grid = new THREE.GridHelper(span, Math.round(span), 0x2b3a5a, 0x1a2540);
+  const grid = new THREE.GridHelper(span, Math.round(span), 0x4a3f34, 0x2a241e);
   grid.position.set(bounds.minX + bounds.width / 2, 0.01, bounds.minY + bounds.length / 2);
   group.add(grid);
 }
@@ -159,8 +159,8 @@ function buildZones(zones) {
 }
 
 function buildRacks(racks, store) {
-  const uprightMat = new THREE.MeshStandardMaterial({ color: 0xf7c56a, metalness: 0.3, roughness: 0.5 });
-  const beamMat = new THREE.MeshStandardMaterial({ color: 0x4f8ef7, metalness: 0.2, roughness: 0.6 });
+  const uprightMat = new THREE.MeshStandardMaterial({ color: 0xF2A93C, metalness: 0.3, roughness: 0.5 }); // primary
+  const beamMat = new THREE.MeshStandardMaterial({ color: 0xE2572E, metalness: 0.2, roughness: 0.6 }); // secondary-2
 
   racks.forEach((rack) => {
     const tpl = store.getRackTemplate(rack);

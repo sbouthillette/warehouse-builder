@@ -60,10 +60,10 @@
   store.onSaveState((state) => {
     const map = {
       idle: ['—', ''],
-      pending: ['Unsaved changes…', 'var(--text-dim)'],
-      saving: ['Saving…', 'var(--text-dim)'],
-      saved: ['Saved', 'var(--accent-2)'],
-      error: ['Save failed — retrying on next edit', 'var(--danger)']
+      pending: ['Unsaved changes…', 'var(--ink-secondary)'],
+      saving: ['Saving…', 'var(--ink-secondary)'],
+      saved: ['Saved', 'var(--status-success-text)'],
+      error: ['Save failed — retrying on next edit', 'var(--status-danger-text)']
     };
     const [text, color] = map[state] || map.idle;
     saveStatusEl.textContent = text;
@@ -251,24 +251,24 @@
       if (i === 0) ctx.moveTo(s.sx, s.sy); else ctx.lineTo(s.sx, s.sy);
     });
     ctx.closePath();
-    ctx.fillStyle = 'rgba(79,142,247,0.15)';
+    ctx.fillStyle = 'rgba(201,126,13,0.18)'; // primary-2 tint
     ctx.fill();
-    ctx.strokeStyle = '#4f8ef7';
+    ctx.strokeStyle = '#C97E0D'; // primary-2
     ctx.lineWidth = 2;
     ctx.stroke();
 
     draftShape.forEach((p, i) => {
       const s = toScreen(p);
-      ctx.fillStyle = '#f7c56a';
+      ctx.fillStyle = '#F2A93C'; // primary
       ctx.beginPath(); ctx.arc(s.sx, s.sy, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#93a2bd';
+      ctx.fillStyle = '#c9c4b8';
       ctx.font = '10px sans-serif';
       ctx.fillText(String(i + 1), s.sx + 6, s.sy - 6);
     });
 
     if (bounds.minX <= 0 && 0 <= bounds.maxX && bounds.minY <= 0 && 0 <= bounds.maxY) {
       const s = toScreen({ x: 0, y: 0 });
-      ctx.fillStyle = '#22c58b';
+      ctx.fillStyle = '#E2572E'; // secondary-2
       ctx.beginPath(); ctx.arc(s.sx, s.sy, 3, 0, Math.PI * 2); ctx.fill();
     }
   }
@@ -344,7 +344,7 @@
       store.addZone(payload);
     }
     formZone.reset();
-    document.getElementById('zoneColor').value = '#4f8ef7';
+    document.getElementById('zoneColor').value = '#BC5C92';
   });
 
   function renderZonesGate() {
@@ -597,8 +597,8 @@
   function renderLegend() {
     const legend = document.getElementById('planLegend');
     legend.innerHTML = `
-      <span class="chip"><span class="swatch" style="background:#4f8ef7"></span>Warehouse outline</span>
-      <span class="chip"><span class="swatch" style="background:#f7c56a"></span>Racks</span>
+      <span class="chip"><span class="swatch" style="background:#C97E0D"></span>Warehouse outline</span>
+      <span class="chip"><span class="swatch" style="background:#F2A93C"></span>Racks</span>
       <span class="chip">Zones shown in their own color</span>
     `;
   }

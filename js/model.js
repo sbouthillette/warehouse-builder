@@ -231,7 +231,7 @@ class Store {
       y: Number(zone.y),
       width: Number(zone.width),
       length: Number(zone.length),
-      color: zone.color || '#4f8ef7',
+      color: zone.color || '#BC5C92',
       type: zone.type || 'Storage'
     };
     this.data.zones.push(z);

@@ -75,28 +75,28 @@
     ctx.beginPath();
     pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy); });
     ctx.closePath();
-    ctx.fillStyle = 'rgba(79,142,247,0.04)';
+    ctx.fillStyle = 'rgba(201,126,13,0.06)'; // primary-2 tint
     ctx.fill();
-    ctx.strokeStyle = '#4f8ef7';
+    ctx.strokeStyle = '#C97E0D'; // primary-2
     ctx.lineWidth = 2;
     ctx.stroke();
 
     const bounds = window.WarehouseModel.polygonBounds(wh.shape);
     const topLeft = worldToScreen(bounds.minX, bounds.maxY);
-    ctx.fillStyle = '#93a2bd';
+    ctx.fillStyle = '#c9c4b8';
     ctx.font = '12px sans-serif';
     ctx.fillText(`${wh.name} — ${bounds.width.toFixed(1)}m × ${bounds.length.toFixed(1)}m bounding box`, topLeft.sx, topLeft.sy - 8);
 
     // vertex markers
     pts.forEach((p) => {
-      ctx.fillStyle = '#4f8ef7';
+      ctx.fillStyle = '#C97E0D'; // primary-2
       ctx.beginPath(); ctx.arc(p.sx, p.sy, 3, 0, Math.PI * 2); ctx.fill();
     });
 
     // origin marker, if (0,0) is in view
     if (bounds.minX <= 0 && 0 <= bounds.maxX + 5 && bounds.minY <= 0 && 0 <= bounds.maxY + 5) {
       const o = worldToScreen(0, 0);
-      ctx.fillStyle = '#22c58b';
+      ctx.fillStyle = '#E2572E'; // secondary-2
       ctx.beginPath(); ctx.arc(o.sx, o.sy, 4, 0, Math.PI * 2); ctx.fill();
       ctx.fillText('(0,0)', o.sx + 6, o.sy + 14);
     }
@@ -115,7 +115,7 @@
       ctx.setLineDash([5, 3]);
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
-      ctx.fillStyle = '#e6ecf5';
+      ctx.fillStyle = '#f4f3f0';
       ctx.font = '11px sans-serif';
       ctx.fillText(`${z.name} (${z.type})`, x + 4, y + 14);
     });
@@ -142,14 +142,14 @@
       const x = Math.min(a.sx, b.sx), y = Math.min(a.sy, b.sy);
       const pw = Math.abs(b.sx - a.sx), ph = Math.abs(b.sy - a.sy);
 
-      ctx.fillStyle = 'rgba(247, 197, 106, 0.25)';
+      ctx.fillStyle = 'rgba(242,169,60,0.25)'; // primary tint
       ctx.fillRect(x, y, pw, ph);
-      ctx.strokeStyle = '#f7c56a';
+      ctx.strokeStyle = '#F2A93C'; // primary
       ctx.lineWidth = 1.5;
       ctx.strokeRect(x, y, pw, ph);
 
       // bay divider ticks
-      ctx.strokeStyle = 'rgba(247,197,106,0.6)';
+      ctx.strokeStyle = 'rgba(242,169,60,0.6)';
       ctx.lineWidth = 1;
       for (let i = 1; i < r.bayCount; i++) {
         const frac = i / r.bayCount;
@@ -162,7 +162,7 @@
         }
       }
 
-      ctx.fillStyle = '#1a1206';
+      ctx.fillStyle = '#1a1a18'; // ink — dark text reads well on the amber rack fill
       ctx.font = 'bold 11px sans-serif';
       ctx.save();
       if (rot) {
@@ -187,7 +187,7 @@
     const wrap = canvas.parentElement;
     ctx.clearRect(0, 0, wrap.clientWidth, wrap.clientHeight);
     if (!wh) {
-      ctx.fillStyle = '#93a2bd';
+      ctx.fillStyle = '#c9c4b8';
       ctx.font = '14px sans-serif';
       ctx.fillText('Define a warehouse shell first (Tab 1) to see the plan.', 20, 30);
       return;
