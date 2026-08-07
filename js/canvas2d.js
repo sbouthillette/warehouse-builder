@@ -52,7 +52,7 @@
     let step = 1;
     if (view.scale < 6) step = 5;
     if (view.scale < 2) step = 10;
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.strokeStyle = 'rgba(26,26,24,0.08)';
     ctx.lineWidth = 1;
     const bounds = wh && wh.shape ? window.WarehouseModel.polygonBounds(wh.shape) : { minX: 0, minY: 0, maxX: 60, maxY: 60 };
     const minX = Math.min(0, bounds.minX) - step, maxX = Math.max(40, bounds.maxX) + step;
@@ -83,7 +83,7 @@
 
     const bounds = window.WarehouseModel.polygonBounds(wh.shape);
     const topLeft = worldToScreen(bounds.minX, bounds.maxY);
-    ctx.fillStyle = '#c9c4b8';
+    ctx.fillStyle = '#5f5e5a'; // ink-secondary
     ctx.font = '12px sans-serif';
     ctx.fillText(`${wh.name} — ${bounds.width.toFixed(1)}m × ${bounds.length.toFixed(1)}m bounding box`, topLeft.sx, topLeft.sy - 8);
 
@@ -115,7 +115,7 @@
       ctx.setLineDash([5, 3]);
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
-      ctx.fillStyle = '#f4f3f0';
+      ctx.fillStyle = '#1a1a18'; // ink
       ctx.font = '11px sans-serif';
       ctx.fillText(`${z.name} (${z.type})`, x + 4, y + 14);
     });
@@ -212,7 +212,7 @@
     const wrap = canvas.parentElement;
     ctx.clearRect(0, 0, wrap.clientWidth, wrap.clientHeight);
     if (!wh) {
-      ctx.fillStyle = '#c9c4b8';
+      ctx.fillStyle = '#5f5e5a'; // ink-secondary
       ctx.font = '14px sans-serif';
       ctx.fillText('Define a warehouse shell first (Tab 1) to see the plan.', 20, 30);
       return;

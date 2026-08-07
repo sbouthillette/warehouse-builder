@@ -24,7 +24,16 @@ function emptyProject() {
     // bayTemplates: [{ id, name,
     //   upright: {width, thickness, height} — a single post's own profile (mm)
     //   frameDepth — distance between the front and back post of a frame, i.e. rack depth (mm)
-    //   beam: {height, width, thickness}, baySpacing, levels: {count, baseHeight, spacing}, maxWeightPerLevelKg }]
+    //   beam: {height, width, thickness},
+    //   baySpacing,
+    //   levels: { count, baseHeight, spacing, groundLevel },
+    //     - groundLevel: true means the bottom level rests directly on the
+    //       floor with no beam (baseHeight is ignored); false means the
+    //       bottom level is a raised beam at `baseHeight` mm above the floor.
+    //     - spacing is the CLEAR OPENING (mm) between consecutive beam faces
+    //       — i.e. from the top of one beam (or the floor, for the gap to the
+    //       first raised beam) to the bottom of the next one.
+    //   maxWeightPerLevelKg }]
     bayTemplates: [],
     // racks: [{ id, name, bayTemplateId, bayCount, x, y, rotation, aisleWidth, maxWeightKg,
     //   bays: [{ id, label, palletCount }] — one entry per bay, in order }]
@@ -118,7 +127,42 @@ function normalizeBayTemplate(t) {
     t.frameDepth = t.upright.depth;
     t.upright = { width: t.upright.width, thickness: 60, height: t.upright.height };
   }
+  // Legacy templates predate the "ground level" option — default them to a
+  // raised bottom level (their original behavior) rather than floor-resting.
+  if (t.levels && t.levels.groundLevel == null) {
+    t.levels.groundLevel = false;
+  }
   return t;
+}
+
+// Computes the elevation (mm, above the floor) of each level's beam in a bay
+// template. `levels.spacing` is the CLEAR OPENING between consecutive beam
+// faces (and between the floor and the first raised beam, when the bottom
+// level rests on the floor) — not a center-to-center or bottom-to-bottom
+// distance. Returns one entry per level:
+//   { index, bottomY, topY, hasBeam } — bottomY/topY in mm above the floor;
+//   hasBeam is false only for a floor-resting bottom level (no beam mesh).
+function computeLevelElevations(tpl) {
+  const count = Math.max(1, Math.round(Number(tpl.levels.count)) || 1);
+  const bH = Number(tpl.beam.height) || 0;
+  const spacing = Number(tpl.levels.spacing) || 0;
+  const baseHeight = Number(tpl.levels.baseHeight) || 0;
+  const groundLevel = !!tpl.levels.groundLevel;
+
+  const out = [];
+  let prevTop = 0; // top face of the previous support; the floor starts at 0
+  for (let i = 0; i < count; i++) {
+    if (i === 0 && groundLevel) {
+      out.push({ index: i, bottomY: 0, topY: 0, hasBeam: false });
+      prevTop = 0;
+      continue;
+    }
+    const bottomY = i === 0 ? baseHeight : prevTop + spacing;
+    const topY = bottomY + bH;
+    out.push({ index: i, bottomY, topY, hasBeam: true });
+    prevTop = topY;
+  }
+  return out;
 }
 
 // Ensures a rack has a `bays` array matching its bayCount (generates one for
@@ -299,29 +343,43 @@ class Store {
   }
 
   // ---- Bay templates -------------------------------------------------
-  addBayTemplate(tpl) {
-    const t = {
-      id: uid('bay'),
-      name: tpl.name || 'Bay Template',
+  // Normalizes a raw form payload (strings/booleans from input elements)
+  // into a correctly-typed bay template record. Shared by add and update so
+  // both paths store consistent types.
+  _normalizeBayPayload(tpl, existing) {
+    const src = (key) => (tpl[key] !== undefined ? tpl[key] : existing && existing[key]);
+    const upright = tpl.upright || (existing && existing.upright) || {};
+    const beam = tpl.beam || (existing && existing.beam) || {};
+    const levels = tpl.levels || (existing && existing.levels) || {};
+    const existingUpright = existing ? existing.upright : {};
+    const existingBeam = existing ? existing.beam : {};
+    const existingLevels = existing ? existing.levels : {};
+    return {
+      name: src('name') || 'Bay Template',
       upright: {
-        width: Number(tpl.upright.width),
-        thickness: Number(tpl.upright.thickness),
-        height: Number(tpl.upright.height)
+        width: Number(upright.width !== undefined ? upright.width : existingUpright.width),
+        thickness: Number(upright.thickness !== undefined ? upright.thickness : existingUpright.thickness),
+        height: Number(upright.height !== undefined ? upright.height : existingUpright.height)
       },
-      frameDepth: Number(tpl.frameDepth), // distance between the front and back post
+      frameDepth: Number(src('frameDepth')),
       beam: {
-        height: Number(tpl.beam.height),
-        width: Number(tpl.beam.width),
-        thickness: Number(tpl.beam.thickness)
+        height: Number(beam.height !== undefined ? beam.height : existingBeam.height),
+        width: Number(beam.width !== undefined ? beam.width : existingBeam.width),
+        thickness: Number(beam.thickness !== undefined ? beam.thickness : existingBeam.thickness)
       },
-      baySpacing: Number(tpl.baySpacing),
+      baySpacing: Number(src('baySpacing')),
       levels: {
-        count: Number(tpl.levels.count),
-        baseHeight: Number(tpl.levels.baseHeight),
-        spacing: Number(tpl.levels.spacing)
+        count: Number(levels.count !== undefined ? levels.count : existingLevels.count),
+        baseHeight: Number(levels.baseHeight !== undefined ? levels.baseHeight : existingLevels.baseHeight) || 0,
+        spacing: Number(levels.spacing !== undefined ? levels.spacing : existingLevels.spacing),
+        groundLevel: !!(levels.groundLevel !== undefined ? levels.groundLevel : existingLevels.groundLevel)
       },
-      maxWeightPerLevelKg: Number(tpl.maxWeightPerLevelKg) || 0
+      maxWeightPerLevelKg: Number(src('maxWeightPerLevelKg')) || 0
     };
+  }
+
+  addBayTemplate(tpl) {
+    const t = { id: uid('bay'), ...this._normalizeBayPayload(tpl, null) };
     this.data.bayTemplates.push(t);
     this.notify();
     return t;
@@ -330,7 +388,7 @@ class Store {
   updateBayTemplate(id, patch) {
     const t = this.data.bayTemplates.find((tt) => tt.id === id);
     if (!t) return;
-    Object.assign(t, patch);
+    Object.assign(t, this._normalizeBayPayload(patch, t));
     this.notify();
   }
 
@@ -397,5 +455,6 @@ class Store {
 window.WarehouseStore = new Store();
 window.WarehouseModel = {
   uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea,
-  normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays
+  normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays,
+  computeLevelElevations
 };

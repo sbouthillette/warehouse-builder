@@ -17,8 +17,8 @@ let ready = false;
 function init() {
   if (!container) return;
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a18); // ink — matches the viewport chrome
-  scene.fog = new THREE.Fog(0x1a1a18, 40, 220);
+  scene.background = new THREE.Color(0xf4f3f0); // surface — light viewport, matches the app chrome
+  scene.fog = new THREE.Fog(0xf4f3f0, 60, 260);
 
   camera = new THREE.PerspectiveCamera(50, containerAspect(), 0.1, 2000);
   camera.position.set(30, 25, 30);
@@ -37,7 +37,7 @@ function init() {
   const dir = new THREE.DirectionalLight(0xffffff, 0.9);
   dir.position.set(50, 80, 20);
   scene.add(dir);
-  const dir2 = new THREE.DirectionalLight(0xF2A93C, 0.25); // warm amber fill light
+  const dir2 = new THREE.DirectionalLight(0xd9e6f7, 0.25); // cool fill light
   dir2.position.set(-40, 30, -40);
   scene.add(dir2);
 
@@ -77,10 +77,10 @@ function makeTextSprite(text) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   canvas.width = 256; canvas.height = 64;
-  ctx.fillStyle = 'rgba(26,26,24,0.85)'; // ink
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'; // light chip so labels read on the light viewport
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.font = 'bold 28px sans-serif';
-  ctx.fillStyle = '#F2A93C'; // primary
+  ctx.fillStyle = '#1a1a18'; // ink
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -117,7 +117,7 @@ function buildWarehouseShell(wh) {
   // used by the outline lines, zones and racks below.
   const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, p.y)));
   const floorGeo = new THREE.ShapeGeometry(shape);
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x211c17, side: THREE.DoubleSide });
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0xe8e5dc, side: THREE.DoubleSide });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   group.add(floor);
@@ -141,7 +141,7 @@ function buildWarehouseShell(wh) {
 
   const bounds = window.WarehouseModel.polygonBounds(pts);
   const span = Math.max(bounds.width, bounds.length, 1);
-  const grid = new THREE.GridHelper(span, Math.round(span), 0x4a3f34, 0x2a241e);
+  const grid = new THREE.GridHelper(span, Math.round(span), 0xc7c2b5, 0xdcd8cd);
   grid.position.set(bounds.minX + bounds.width / 2, 0.01, -(bounds.minY + bounds.length / 2));
   group.add(grid);
 }
@@ -163,9 +163,10 @@ function buildZones(zones) {
 }
 
 function buildRacks(racks, store) {
-  const uprightMat = new THREE.MeshStandardMaterial({ color: 0xF2A93C, metalness: 0.3, roughness: 0.5 }); // primary
-  const beamMat = new THREE.MeshStandardMaterial({ color: 0xE2572E, metalness: 0.2, roughness: 0.6 }); // secondary-2
-  const braceMat = new THREE.MeshStandardMaterial({ color: 0xBC5C92, metalness: 0.2, roughness: 0.6 }); // tertiary
+  // Standard pallet-racking colors: blue upright frames, orange load beams.
+  const uprightMat = new THREE.MeshStandardMaterial({ color: 0x1F4E96, metalness: 0.35, roughness: 0.45 });
+  const beamMat = new THREE.MeshStandardMaterial({ color: 0xE8630A, metalness: 0.25, roughness: 0.5 });
+  const braceMat = new THREE.MeshStandardMaterial({ color: 0x2E5AA8, metalness: 0.3, roughness: 0.5 });
 
   racks.forEach((rack) => {
     const tpl = store.getRackTemplate(rack);
@@ -208,10 +209,15 @@ function buildRacks(racks, store) {
       rackGroup.add(braceHigh);
     }
 
-    // beams per level, front (z=bT/2) and back (z=uD-bT/2)
-    for (let lvl = 0; lvl < tpl.levels.count; lvl++) {
-      const levelY = (tpl.levels.baseHeight + lvl * tpl.levels.spacing) / 1000;
-      if (levelY > uH) continue;
+    // beams per level, front (z=bT/2) and back (z=uD-bT/2). Level elevations
+    // account for the "ground level" option (bottom level resting on the
+    // floor with no beam) and treat levels.spacing as the clear opening
+    // between beam faces, not a center-to-center distance.
+    const levelElevations = window.WarehouseModel.computeLevelElevations(tpl);
+    levelElevations.forEach((lv) => {
+      if (!lv.hasBeam) return; // floor-resting bottom level — nothing to draw
+      const levelY = lv.bottomY / 1000;
+      if (levelY > uH) return;
       for (let b = 0; b < bayCount; b++) {
         const startX = b * (spacing + uW) + uW;
         const beamGeo = new THREE.BoxGeometry(spacing, bH, bT);
@@ -222,7 +228,7 @@ function buildRacks(racks, store) {
         back.position.set(startX + spacing / 2, levelY + bH / 2, uD - bT / 2);
         rackGroup.add(back);
       }
-    }
+    });
 
     const label = makeTextSprite(`${rack.name}`);
     const totalLength = uprightCount * uW + bayCount * spacing;

@@ -228,10 +228,14 @@
               <label># of Levels (beam rows)
                 <input type="number" id="levelCount" min="1" step="1" value="4" required />
               </label>
-              <label>Base Level Height (mm)
+              <label class="full-row checkbox-row">
+                <input type="checkbox" id="levelGroundLevel" />
+                Bottom level rests directly on the floor (no beam)
+              </label>
+              <label id="levelBaseLabel">Base Level Height — first beam's height above the floor (mm)
                 <input type="number" id="levelBase" min="0" step="1" value="150" required />
               </label>
-              <label>Level Spacing (mm)
+              <label>Level Spacing — clear opening between beam faces (mm)
                 <input type="number" id="levelSpacing" min="1" step="1" value="1600" required />
               </label>
               <label>Max Weight per Level (kg)

@@ -262,7 +262,7 @@
       const s = toScreen(p);
       ctx.fillStyle = '#F2A93C'; // primary
       ctx.beginPath(); ctx.arc(s.sx, s.sy, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#c9c4b8';
+      ctx.fillStyle = '#5f5e5a'; // ink-secondary
       ctx.font = '10px sans-serif';
       ctx.fillText(String(i + 1), s.sx + 6, s.sy - 6);
     });
@@ -391,52 +391,87 @@
 
   // ---------------- Tab 3: Bay Builder ----------------
   const formBay = document.getElementById('formBay');
+  let lastSavedBayId = null; // used to scroll/highlight the saved row in the table below
   formBay.addEventListener('submit', (e) => {
     e.preventDefault();
-    const payload = {
-      name: document.getElementById('bayName').value,
-      upright: {
-        width: document.getElementById('uprightWidth').value,
-        thickness: document.getElementById('uprightThickness').value,
-        height: document.getElementById('uprightHeight').value
-      },
-      frameDepth: document.getElementById('frameDepth').value,
-      beam: {
-        height: document.getElementById('beamHeight').value,
-        width: document.getElementById('beamWidth').value,
-        thickness: document.getElementById('beamThickness').value
-      },
-      baySpacing: document.getElementById('baySpacing').value,
-      levels: {
-        count: document.getElementById('levelCount').value,
-        baseHeight: document.getElementById('levelBase').value,
-        spacing: document.getElementById('levelSpacing').value
-      },
-      maxWeightPerLevelKg: document.getElementById('bayMaxWeight').value
-    };
-    if (editingBayId) {
-      store.updateBayTemplate(editingBayId, payload);
-      editingBayId = null;
-      formBay.querySelector('button[type=submit]').textContent = 'Save Bay Template';
-    } else {
-      store.addBayTemplate(payload);
+    try {
+      const payload = {
+        name: document.getElementById('bayName').value,
+        upright: {
+          width: document.getElementById('uprightWidth').value,
+          thickness: document.getElementById('uprightThickness').value,
+          height: document.getElementById('uprightHeight').value
+        },
+        frameDepth: document.getElementById('frameDepth').value,
+        beam: {
+          height: document.getElementById('beamHeight').value,
+          width: document.getElementById('beamWidth').value,
+          thickness: document.getElementById('beamThickness').value
+        },
+        baySpacing: document.getElementById('baySpacing').value,
+        levels: {
+          count: document.getElementById('levelCount').value,
+          baseHeight: document.getElementById('levelBase').value,
+          spacing: document.getElementById('levelSpacing').value,
+          groundLevel: document.getElementById('levelGroundLevel').checked
+        },
+        maxWeightPerLevelKg: document.getElementById('bayMaxWeight').value
+      };
+      if (editingBayId) {
+        store.updateBayTemplate(editingBayId, payload);
+        lastSavedBayId = editingBayId;
+        editingBayId = null;
+        formBay.querySelector('button[type=submit]').textContent = 'Save Bay Template';
+      } else {
+        const created = store.addBayTemplate(payload);
+        lastSavedBayId = created.id;
+      }
+      formBay.reset();
+      // restore sensible defaults after reset
+      document.getElementById('uprightWidth').value = 90;
+      document.getElementById('uprightThickness').value = 60;
+      document.getElementById('uprightHeight').value = 7000;
+      document.getElementById('frameDepth').value = 900;
+      document.getElementById('beamHeight').value = 100;
+      document.getElementById('beamWidth').value = 2700;
+      document.getElementById('beamThickness').value = 50;
+      document.getElementById('baySpacing').value = 2700;
+      document.getElementById('levelCount').value = 4;
+      document.getElementById('levelBase').value = 150;
+      document.getElementById('levelSpacing').value = 1600;
+      document.getElementById('levelGroundLevel').checked = false;
+      document.getElementById('bayMaxWeight').value = 1000;
+      updateLevelBaseFieldState();
+      renderBayPreview();
+      // Visible confirmation: the saved-templates table lives below the fold
+      // (under the split-editor row), so without this, saving can look like
+      // nothing happened even though it worked.
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`#bayTable tbody tr[data-id="${lastSavedBayId}"]`);
+        if (row) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          row.classList.add('row-flash');
+          setTimeout(() => row.classList.remove('row-flash'), 1500);
+        }
+      });
+    } catch (err) {
+      console.error('Failed to save bay template', err);
+      alert('Could not save the bay template: ' + err.message);
     }
-    formBay.reset();
-    // restore sensible defaults after reset
-    document.getElementById('uprightWidth').value = 90;
-    document.getElementById('uprightThickness').value = 60;
-    document.getElementById('uprightHeight').value = 7000;
-    document.getElementById('frameDepth').value = 900;
-    document.getElementById('beamHeight').value = 100;
-    document.getElementById('beamWidth').value = 2700;
-    document.getElementById('beamThickness').value = 50;
-    document.getElementById('baySpacing').value = 2700;
-    document.getElementById('levelCount').value = 4;
-    document.getElementById('levelBase').value = 150;
-    document.getElementById('levelSpacing').value = 1600;
-    document.getElementById('bayMaxWeight').value = 1000;
+  });
+
+  // Base Level Height only applies when the bottom level is a raised beam —
+  // grey it out (and skip it in the draft/payload math) when the bottom
+  // level is set to rest directly on the floor instead.
+  function updateLevelBaseFieldState() {
+    const grounded = document.getElementById('levelGroundLevel').checked;
+    document.getElementById('levelBase').disabled = grounded;
+  }
+  document.getElementById('levelGroundLevel').addEventListener('change', () => {
+    updateLevelBaseFieldState();
     renderBayPreview();
   });
+  updateLevelBaseFieldState();
 
   // Reads the current (unsaved) Bay Builder form values into a plain object
   // shaped like a bay template, for live 3D preview as the user types.
@@ -461,7 +496,8 @@
       levels: {
         count: Math.max(1, Math.round(num('levelCount', 4))),
         baseHeight: num('levelBase', 150) || 0,
-        spacing: num('levelSpacing', 1600)
+        spacing: num('levelSpacing', 1600),
+        groundLevel: document.getElementById('levelGroundLevel').checked
       }
     };
   }
@@ -480,18 +516,46 @@
     if (el) el.addEventListener('input', renderBayPreview);
   });
 
+  // Populates the form with an existing template's values (used by both the
+  // name-cell click, for a quick look, and the edit button). `enterEditMode`
+  // controls whether Save Bay Template will overwrite this template (edit)
+  // or just leave the values loaded for viewing/tweaking into a new one.
+  function loadBayTemplateIntoForm(t, enterEditMode) {
+    document.getElementById('bayName').value = t.name;
+    document.getElementById('uprightWidth').value = t.upright.width;
+    document.getElementById('uprightThickness').value = t.upright.thickness;
+    document.getElementById('uprightHeight').value = t.upright.height;
+    document.getElementById('frameDepth').value = t.frameDepth;
+    document.getElementById('beamHeight').value = t.beam.height;
+    document.getElementById('beamWidth').value = t.beam.width;
+    document.getElementById('beamThickness').value = t.beam.thickness;
+    document.getElementById('baySpacing').value = t.baySpacing;
+    document.getElementById('levelCount').value = t.levels.count;
+    document.getElementById('levelBase').value = t.levels.baseHeight;
+    document.getElementById('levelSpacing').value = t.levels.spacing;
+    document.getElementById('levelGroundLevel').checked = !!t.levels.groundLevel;
+    updateLevelBaseFieldState();
+    document.getElementById('bayMaxWeight').value = t.maxWeightPerLevelKg;
+    if (enterEditMode) {
+      editingBayId = t.id;
+      formBay.querySelector('button[type=submit]').textContent = 'Update Bay Template';
+    }
+    renderBayPreview();
+  }
+
   function renderBayTable() {
     const tbody = document.querySelector('#bayTable tbody');
     tbody.innerHTML = '';
     store.data.bayTemplates.forEach((t) => {
       const tr = document.createElement('tr');
+      tr.dataset.id = t.id;
       tr.innerHTML = `
-        <td>${escapeHtml(t.name)}</td>
+        <td class="bay-name-cell" data-act="view" data-id="${t.id}" title="Click to view this bay in the 3D preview">${escapeHtml(t.name)}</td>
         <td>${t.upright.width}×${t.upright.thickness}×${t.upright.height}</td>
         <td>${t.frameDepth} mm</td>
         <td>${t.beam.height}×${t.beam.width}×${t.beam.thickness}</td>
         <td>${t.baySpacing} mm</td>
-        <td>${t.levels.count} (base ${t.levels.baseHeight}, step ${t.levels.spacing})</td>
+        <td>${t.levels.count} (${t.levels.groundLevel ? 'bottom on floor' : `base ${t.levels.baseHeight}mm`}, clear ${t.levels.spacing}mm)</td>
         <td>${t.maxWeightPerLevelKg}</td>
         <td>
           <button class="icon-btn" data-act="edit" data-id="${t.id}" title="Edit">✎</button>
@@ -499,29 +563,22 @@
         </td>`;
       tbody.appendChild(tr);
     });
-    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', () => {
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
       if (confirm('Delete this bay template? Racks using it will keep referencing it but show as unresolved.')) store.deleteBayTemplate(b.dataset.id);
     }));
-    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => {
+    tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
+      const t = store.data.bayTemplates.find((tt) => tt.id === cell.dataset.id);
+      if (!t) return;
+      loadBayTemplateIntoForm(t, false);
+      if (window.matchMedia('(max-width: 1100px)').matches) formBay.scrollIntoView({ behavior: 'smooth' });
+    }));
+    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
       const t = store.data.bayTemplates.find((tt) => tt.id === b.dataset.id);
       if (!t) return;
-      editingBayId = t.id;
-      document.getElementById('bayName').value = t.name;
-      document.getElementById('uprightWidth').value = t.upright.width;
-      document.getElementById('uprightThickness').value = t.upright.thickness;
-      document.getElementById('uprightHeight').value = t.upright.height;
-      document.getElementById('frameDepth').value = t.frameDepth;
-      document.getElementById('beamHeight').value = t.beam.height;
-      document.getElementById('beamWidth').value = t.beam.width;
-      document.getElementById('beamThickness').value = t.beam.thickness;
-      document.getElementById('baySpacing').value = t.baySpacing;
-      document.getElementById('levelCount').value = t.levels.count;
-      document.getElementById('levelBase').value = t.levels.baseHeight;
-      document.getElementById('levelSpacing').value = t.levels.spacing;
-      document.getElementById('bayMaxWeight').value = t.maxWeightPerLevelKg;
-      formBay.querySelector('button[type=submit]').textContent = 'Update Bay Template';
+      loadBayTemplateIntoForm(t, true);
       formBay.scrollIntoView({ behavior: 'smooth' });
-      renderBayPreview();
     }));
   }
 
