@@ -2,19 +2,22 @@
 // POST /api/warehouses      -> create a new, empty warehouse project
 import { sql } from '@vercel/postgres';
 
-const EMPTY_PROJECT = { version: 1, warehouse: null, zones: [], bayTemplates: [], racks: [] };
+const EMPTY_PROJECT = { version: 1, locked: false, passwordHash: null, passwordSalt: null, warehouse: null, zones: [], bayTemplates: [], racks: [] };
 
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const { rows } = await sql`
-        SELECT id, data->'warehouse'->>'name' AS name, created_at, updated_at
+        SELECT id, data->'warehouse'->>'name' AS name,
+               COALESCE((data->>'locked')::boolean, false) AS locked,
+               created_at, updated_at
         FROM warehouses
         ORDER BY updated_at DESC
       `;
       const list = rows.map((r) => ({
         id: r.id,
         name: r.name || 'Untitled Warehouse',
+        locked: r.locked === true,
         createdAt: r.created_at,
         updatedAt: r.updated_at
       }));

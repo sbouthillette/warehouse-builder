@@ -108,7 +108,7 @@
     list.forEach((w) => {
       const opt = document.createElement('option');
       opt.value = w.id;
-      opt.textContent = w.name;
+      opt.textContent = (w.locked ? '🔒 ' : '') + w.name;
       picker.appendChild(opt);
     });
     const idToSelect = selectId || store.currentId || (list[0] && list[0].id);
@@ -142,6 +142,11 @@
     if (!picker.value) return;
     try {
       await store.loadWarehouse(picker.value);
+      if (!(await ensureUnlocked())) {
+        store.closeWarehouse();
+        await refreshWarehouseList();
+        return;
+      }
       resetWarehouseFormFromStore();
       if (window.Canvas2D) window.Canvas2D.resetView();
       switchTab('warehouse');
@@ -165,6 +170,54 @@
   document.getElementById('btnNewWarehouse').addEventListener('click', createAndOpenWarehouse);
   document.getElementById('btnFirstWarehouse').addEventListener('click', createAndOpenWarehouse);
 
+  // ---------------- Lock / unlock the currently open warehouse ----------------
+  // Soft protection only — the password gate lives entirely in this app's own
+  // UI (see ensureUnlocked below), not on the server, since /api/warehouses
+  // has no concept of a logged-in user. It's meant to deter accidental edits
+  // or casual browsing, not to secure the data against a determined actor.
+  function renderLockButton() {
+    const btn = document.getElementById('btnToggleLock');
+    if (!btn || !store.currentId) { if (btn) btn.hidden = !store.currentId; return; }
+    btn.hidden = false;
+    const locked = store.isLocked();
+    btn.textContent = locked ? '🔓 Unlock' : '🔒 Lock';
+  }
+
+  document.getElementById('btnToggleLock').addEventListener('click', async () => {
+    if (!store.currentId) return;
+    if (store.isLocked()) {
+      const pw = prompt('Enter the password to unlock this warehouse:');
+      if (pw === null) return;
+      const ok = await store.unlockProject(pw);
+      if (!ok) { alert('Incorrect password.'); return; }
+      alert('Warehouse unlocked.');
+    } else {
+      const pw = prompt('Set a password to lock this warehouse:');
+      if (pw === null) return;
+      if (!pw.trim()) { alert('Password cannot be empty.'); return; }
+      const confirmPw = prompt('Confirm the password:');
+      if (confirmPw !== pw) { alert('Passwords did not match — nothing was locked.'); return; }
+      await store.lockProject(pw);
+      alert('Warehouse locked. You’ll need this password to unlock it next time it’s opened.');
+    }
+    renderLockButton();
+    refreshWarehouseList(store.currentId); // picker's 🔒 icon reflects the new state
+  });
+
+  // Prompts for the password (with retry) if the currently-loaded project is
+  // locked; returns true once unlocked (or if it wasn't locked to begin
+  // with), false if the user cancels. Call after store.loadWarehouse(), before
+  // showing the warehouse's data in the UI.
+  async function ensureUnlocked() {
+    while (store.isLocked()) {
+      const pw = prompt(`"${store.data.warehouse?.name || 'This warehouse'}" is locked. Enter its password to unlock:`);
+      if (pw === null) return false;
+      const ok = await store.unlockProject(pw);
+      if (!ok) { alert('Incorrect password. Try again.'); continue; }
+    }
+    return true;
+  }
+
   document.getElementById('btnDeleteWarehouse').addEventListener('click', async () => {
     if (!store.currentId) return;
     const name = store.data.warehouse?.name || 'this warehouse';
@@ -174,6 +227,11 @@
     const list = await refreshWarehouseList();
     if (list.length > 0) {
       await store.loadWarehouse(list[0].id);
+      if (!(await ensureUnlocked())) {
+        store.closeWarehouse();
+        await refreshWarehouseList();
+        return;
+      }
       resetWarehouseFormFromStore();
       if (window.Canvas2D) window.Canvas2D.resetView();
     }
@@ -1366,6 +1424,7 @@
 
   // ---------------- global re-render on any data change ----------------
   function renderAll() {
+    renderLockButton();
     renderWarehouseSummary();
     renderZonesGate();
     renderZonesTable();
@@ -1396,6 +1455,11 @@
     if (list.length > 0) {
       try {
         await store.loadWarehouse(list[0].id);
+        if (!(await ensureUnlocked())) {
+          store.closeWarehouse();
+          await refreshWarehouseList();
+          return;
+        }
         resetWarehouseFormFromStore();
         if (window.Canvas2D) window.Canvas2D.resetView();
       } catch (err) {

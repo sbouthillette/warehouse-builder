@@ -16,9 +16,32 @@ function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ---- Password lock helpers (SHA-256 via the browser's SubtleCrypto) -------
+// Never store the raw password — only a salted digest, so a copy of the
+// project JSON (e.g. an exported file) doesn't reveal it in plain text.
+async function digestHex(str) {
+  const bytes = new TextEncoder().encode(str);
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomSaltHex() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function emptyProject() {
   return {
     version: 3,
+    // Optional password lock on the whole project — a soft protection
+    // against casual browsing/accidental edits, not real access control
+    // (there's no server-side auth; the API has no concept of a logged-in
+    // user). `locked` gates the app's own UI: opening a locked warehouse
+    // prompts for the password before it's shown. passwordHash is a SHA-256
+    // digest of `${passwordSalt}:${password}`, never the raw password.
+    locked: false,
+    passwordHash: null,
+    passwordSalt: null,
     warehouse: null, // { id, name, height, shape:[{x,y}, ...] } — shape is an ordered polygon outline, metres
     // zones: [{ id, name, kind, type, x, y, width, length, color, height }]
     //   kind — 'zone' (flat functional area: storage/staging/picking/etc.,
@@ -501,6 +524,36 @@ class Store {
       this.setSaveState('idle');
       this.listeners.forEach((fn) => fn(this.data));
     }
+  }
+
+  // ---- Password lock (see digestHex/randomSaltHex above for caveats) -----
+  isLocked() {
+    return !!(this.data && this.data.locked);
+  }
+
+  async lockProject(password) {
+    const salt = randomSaltHex();
+    const hash = await digestHex(`${salt}:${password}`);
+    this.data.locked = true;
+    this.data.passwordHash = hash;
+    this.data.passwordSalt = salt;
+    this.notify();
+  }
+
+  async verifyPassword(password) {
+    if (!this.data.passwordHash || !this.data.passwordSalt) return false;
+    const hash = await digestHex(`${this.data.passwordSalt}:${password}`);
+    return hash === this.data.passwordHash;
+  }
+
+  async unlockProject(password) {
+    const ok = await this.verifyPassword(password);
+    if (!ok) return false;
+    this.data.locked = false;
+    this.data.passwordHash = null;
+    this.data.passwordSalt = null;
+    this.notify();
+    return true;
   }
 
   closeWarehouse() {
