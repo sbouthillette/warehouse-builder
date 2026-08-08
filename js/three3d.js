@@ -299,11 +299,20 @@ function buildDoors(doors, wh) {
 
 function buildRacks(racks, store) {
   // Standard pallet-racking colors: blue upright frames, orange load beams,
-  // steel-gray solid shelf decks (loose-stock levels).
+  // steel-gray solid shelf decks (loose-stock levels), tan occupancy boxes
+  // (simulated inventory — see the Inventory tab).
   const uprightMat = new THREE.MeshStandardMaterial({ color: 0x1F4E96, metalness: 0.35, roughness: 0.45 });
   const beamMat = new THREE.MeshStandardMaterial({ color: 0xE8630A, metalness: 0.25, roughness: 0.5 });
   const braceMat = new THREE.MeshStandardMaterial({ color: 0x2E5AA8, metalness: 0.3, roughness: 0.5 });
   const shelfMat = new THREE.MeshStandardMaterial({ color: 0x9BA3AE, metalness: 0.2, roughness: 0.65 });
+  const occupiedMat = new THREE.MeshStandardMaterial({ color: 0xC9A063, metalness: 0.05, roughness: 0.85 });
+
+  // Keyed by rackId|bayIndex|levelIndex|locationIndex — matches how
+  // Store.listLocations() enumerates the same locations, so a location's
+  // key here always lines up with the one an import matched against.
+  const invByKey = new Map(
+    (store.data.inventory || []).map((inv) => [`${inv.rackId}|${inv.bayIndex}|${inv.levelIndex}|${inv.locationIndex}`, inv])
+  );
 
   racks.forEach((rack) => {
     const tpl = store.getRackTemplate(rack);
@@ -419,6 +428,42 @@ function buildRacks(racks, store) {
         });
       }
     });
+
+    // Occupancy boxes for any location currently in the simulated inventory
+    // feed — one box per occupied location, filling most of its slice of
+    // the level's opening, with its part number floating just above. Runs
+    // for every location regardless of how many share the level (unlike the
+    // label loop above, which skips single-location levels since there's
+    // nothing to distinguish there — an occupied single-location level
+    // still needs its box).
+    if (invByKey.size) {
+      levelElevations.forEach((lv, li) => {
+        const locLabels = window.WarehouseModel.generateLocationLabels(lv.locations);
+        const openBottom = lv.hasBeam ? lv.topY / 1000 : 0;
+        const nextBottomMm = levelElevations[li + 1] ? levelElevations[li + 1].bottomY : tpl.upright.height;
+        const openTop = nextBottomMm / 1000;
+        if (openTop <= openBottom) return;
+        for (let b = 0; b < bayCount; b++) {
+          const startX = b * (spacing + uW) + uW;
+          locLabels.forEach((loc, k) => {
+            const inv = invByKey.get(`${rack.id}|${b}|${li}|${k}`);
+            if (!inv) return;
+            const segCenter = startX + (spacing * (k + 0.5)) / locLabels.length;
+            const cellW = (spacing / locLabels.length) * 0.85;
+            const cellH = Math.max((openTop - openBottom) * 0.85, 0.05);
+            const cellD = uD * 0.85;
+            const box = new THREE.Mesh(new THREE.BoxGeometry(cellW, cellH, cellD), occupiedMat);
+            box.position.set(segCenter, openBottom + cellH / 2 + 0.02, uD / 2);
+            rackGroup.add(box);
+
+            const partTag = makeTextSprite(inv.partNumber);
+            partTag.scale.set(0.6, 0.25, 1);
+            partTag.position.set(segCenter, openBottom + cellH + 0.18, uD / 2);
+            rackGroup.add(partTag);
+          });
+        }
+      });
+    }
 
     const label = makeTextSprite(`${rack.name}`);
     const totalLength = uprightCount * uW + bayCount * spacing;

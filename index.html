@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -63,6 +64,7 @@
       <button class="tab-btn" data-tab="racks">5. Racks &amp; Aisles</button>
       <button class="tab-btn" data-tab="plan2d">6. 2D Plan</button>
       <button class="tab-btn" data-tab="view3d">7. Dynamic Spatial Model (3D)</button>
+      <button class="tab-btn" data-tab="inventory">8. Inventory</button>
     </nav>
 
     <main class="content">
@@ -502,6 +504,32 @@
         </div>
         <div id="threeContainer" class="three-wrap">
           <span class="scale-chip">Grid = 1 m</span>
+        </div>
+      </section>
+
+      <!-- TAB 7: INVENTORY -->
+      <section id="tab-inventory" class="tab-panel">
+        <h2>Inventory</h2>
+        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, fill in a Part Number (and optionally Quantity) next to each occupied one in Excel, then import it back — occupied locations show up as boxes in the 3D view. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
+        <div id="inventoryGate" class="gate-message"></div>
+        <div id="inventoryUI" hidden>
+          <div class="form-actions">
+            <button type="button" id="btnExportLocations" class="btn btn-primary">Export Location List (.xlsx)</button>
+            <label class="btn btn-ghost file-btn">
+              Import Inventory (.xlsx)
+              <input type="file" id="fileImportInventory" accept=".xlsx,.xls" hidden />
+            </label>
+            <button type="button" id="btnClearInventory" class="btn btn-danger-ghost">Clear Inventory</button>
+          </div>
+
+          <div id="inventorySummary" class="card summary-card"></div>
+
+          <div class="table-wrap">
+            <table id="inventoryTable" class="data-table">
+              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Part Number</th><th>Quantity</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

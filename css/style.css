@@ -115,6 +115,7 @@ html, body {
 .btn-danger-ghost { background: var(--background); color: var(--status-danger-text); border-color: var(--border); }
 .btn-danger-ghost:hover { background: var(--status-danger-bg); border-color: var(--status-danger-text); }
 .file-btn { display: inline-flex; align-items: center; }
+.file-btn.is-disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 .icon-btn {
   background: transparent; border: none; color: var(--ink-secondary); cursor: pointer; font-size: 14px;
   padding: var(--sp-2);

@@ -74,7 +74,19 @@ function emptyProject() {
     //     door opening's start (near) edge.
     //   width/height — door opening size (m).
     //   type — 'garage' (wide/tall drive-in or dock door) or 'regular' (pedestrian door).
-    doors: []
+    doors: [],
+    // inventory: [{ id, code, rackId, bayIndex, levelIndex, locationIndex,
+    //   partNumber, quantity }] — one entry per OCCUPIED discrete storage
+    //   location (see Store.listLocations()/buildLocationCode below for what
+    //   a location is and how `code` is derived). Populated by importing an
+    //   .xlsx inventory file from the Inventory tab; simulates a live ERP/WMS
+    //   feed without an actual integration. rackId/bayIndex/levelIndex/
+    //   locationIndex are resolved at import time by matching `code` against
+    //   the model's current locations — if the model changes later (renamed
+    //   rack, different bay count) an entry can go stale/unmatched on the
+    //   next re-import, but a stale entry already in this array still
+    //   renders fine as long as its ids still resolve.
+    inventory: []
   };
 }
 
@@ -332,6 +344,18 @@ function generateLocationLabels(count) {
   return Array.from({ length: n }, (_, i) => (i < letters.length ? letters[i] : String(i + 1)));
 }
 
+// Builds the human-readable code that identifies one discrete storage
+// location (RACK-BAY-Ln-POSITION), used both for the exported location list
+// and to match inventory rows back to a real location on import. Assumes
+// rack names and bay labels are kept reasonably unique within the
+// warehouse — a real WMS location code has the same assumption.
+function slugLocationPart(s) {
+  return String(s ?? '').trim().replace(/\s+/g, '').toUpperCase() || 'X';
+}
+function buildLocationCode(rackName, bayLabel, levelIndex, locationLabel) {
+  return `${slugLocationPart(rackName)}-${slugLocationPart(bayLabel)}-L${levelIndex + 1}-${slugLocationPart(locationLabel || '1')}`;
+}
+
 // Normalizes one level entry of a bay template's `levels` array.
 //   clearHeight — for level 0: height (mm) above the floor to this level's
 //     beam (ignored if restsOnFloor); for level i>0: the CLEAR OPENING (mm)
@@ -518,6 +542,7 @@ class Store {
     this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
     this.data.zones = (this.data.zones || []).map(normalizeZone);
+    this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -586,6 +611,7 @@ class Store {
     this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
     this.data.zones = (this.data.zones || []).map(normalizeZone);
+    this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.notify();
   }
 
@@ -800,6 +826,9 @@ class Store {
   deleteRack(id) {
     if (this.isLocked()) return;
     this.data.racks = this.data.racks.filter((r) => r.id !== id);
+    // drop any inventory that pointed at locations on this rack — they'd
+    // otherwise be silent orphans that never render again
+    this.data.inventory = (this.data.inventory || []).filter((inv) => inv.rackId !== id);
     this.notify();
   }
 
@@ -819,6 +848,59 @@ class Store {
       depthM: tpl.frameDepth / 1000,
       heightM: tpl.upright.height / 1000
     };
+  }
+
+  // ---- Inventory (simulated ERP/WMS occupancy) ---------------------------
+  // Flattens every rack currently in the warehouse down to its individual
+  // addressable storage locations — one entry per discrete position within
+  // a level (an "A"/"B" pallet slot, a single-location shelf, etc.). This is
+  // the location master: the Inventory tab exports it as a spreadsheet
+  // (Part Number left blank) for someone to fill in and re-import, and
+  // re-derives it fresh at import time to match rows back to real
+  // rackId/bayIndex/levelIndex/locationIndex by exact `code` match.
+  listLocations() {
+    const out = [];
+    this.data.racks.forEach((rack) => {
+      const tpl = this.getRackTemplate(rack);
+      if (!tpl) return;
+      const levelElevations = computeLevelElevations(tpl);
+      for (let bayIndex = 0; bayIndex < rack.bayCount; bayIndex++) {
+        const bay = rack.bays && rack.bays[bayIndex];
+        const bayLabel = bay ? bay.label : `Bay ${bayIndex + 1}`;
+        levelElevations.forEach((lv, levelIndex) => {
+          const labels = generateLocationLabels(lv.locations);
+          labels.forEach((locationLabel, locationIndex) => {
+            out.push({
+              code: buildLocationCode(rack.name, bayLabel, levelIndex, locationLabel),
+              rackId: rack.id,
+              rackName: rack.name,
+              bayIndex,
+              bayLabel,
+              levelIndex,
+              levelNumber: levelIndex + 1,
+              locationIndex,
+              locationLabel: locationLabel || '1',
+              levelType: lv.levelType
+            });
+          });
+        });
+      }
+    });
+    return out;
+  }
+
+  // Replaces the whole inventory list at once — used after an import, where
+  // every row has already been matched/resolved against listLocations().
+  setInventory(records) {
+    if (this.isLocked()) return;
+    this.data.inventory = Array.isArray(records) ? records : [];
+    this.notify();
+  }
+
+  clearInventory() {
+    if (this.isLocked()) return;
+    this.data.inventory = [];
+    this.notify();
   }
 }
 

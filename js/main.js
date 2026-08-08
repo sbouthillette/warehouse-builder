@@ -201,10 +201,23 @@
       col.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = locked; });
     });
     document.querySelectorAll(
-      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn'
+      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, #inventoryTable .icon-btn'
     ).forEach((el) => { el.disabled = locked; });
     const delBtn = document.getElementById('btnDeleteWarehouse');
     if (delBtn) delBtn.disabled = locked;
+    // Inventory tab isn't a split-editor form — Export is read-only and
+    // stays enabled even when locked; only the mutating controls (Import,
+    // Clear) get disabled.
+    const importInv = document.getElementById('fileImportInventory');
+    if (importInv) {
+      importInv.disabled = locked;
+      // The input itself is visually hidden (a <label class="btn"> wraps
+      // it) — disabling the input alone blocks the click, but toggle the
+      // label's own disabled look too so it doesn't look clickable.
+      if (importInv.closest('.file-btn')) importInv.closest('.file-btn').classList.toggle('is-disabled', locked);
+    }
+    const clearInv = document.getElementById('btnClearInventory');
+    if (clearInv) clearInv.disabled = locked;
   }
 
   document.getElementById('btnToggleLock').addEventListener('click', async () => {
@@ -1382,6 +1395,123 @@
     }));
   }
 
+  // ---------------- Tab 7: Inventory (simulated ERP/WMS feed) ----------------
+  function renderInventoryGate() {
+    const hasRacks = store.data.racks.length > 0;
+    document.getElementById('inventoryGate').classList.toggle('show', !hasRacks);
+    document.getElementById('inventoryGate').textContent = 'Add at least one rack (Tab 5) before tracking inventory.';
+    document.getElementById('inventoryUI').hidden = !hasRacks;
+  }
+
+  function renderInventorySummary() {
+    const el = document.getElementById('inventorySummary');
+    if (!el) return;
+    const total = store.listLocations().length;
+    const occupied = store.data.inventory.length;
+    el.innerHTML = `<strong>${occupied}</strong> of <strong>${total}</strong> location(s) occupied` +
+      (total ? ` (${Math.round((occupied / total) * 100)}%)` : '');
+  }
+
+  function renderInventoryTable() {
+    const tbody = document.querySelector('#inventoryTable tbody');
+    tbody.innerHTML = '';
+    store.data.inventory.forEach((inv) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(inv.code)}</td>
+        <td>${escapeHtml(inv.rackName || '')}</td>
+        <td>${escapeHtml(inv.bayLabel || '')}</td>
+        <td>${inv.levelNumber ?? ''}</td>
+        <td>${escapeHtml(inv.locationLabel || '')}</td>
+        <td>${escapeHtml(inv.partNumber)}</td>
+        <td>${inv.quantity}</td>
+        <td><button class="icon-btn" data-act="del" data-id="${inv.id}" title="Remove">✕</button></td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', () => {
+      store.setInventory(store.data.inventory.filter((inv) => inv.id !== b.dataset.id));
+    }));
+  }
+
+  document.getElementById('btnExportLocations').addEventListener('click', () => {
+    if (typeof XLSX === 'undefined') { alert('The Excel library did not load — check your connection and try again.'); return; }
+    const locations = store.listLocations();
+    if (!locations.length) { alert('No storage locations yet — add racks and bay templates first.'); return; }
+    const occupiedByCode = new Map(store.data.inventory.map((inv) => [inv.code, inv]));
+    const rows = locations.map((loc) => {
+      const existing = occupiedByCode.get(loc.code);
+      return {
+        'Location Code': loc.code,
+        'Rack': loc.rackName,
+        'Bay': loc.bayLabel,
+        'Level': loc.levelNumber,
+        'Position': loc.locationLabel,
+        'Level Type': loc.levelType,
+        'Part Number': existing ? existing.partNumber : '',
+        'Quantity': existing ? existing.quantity : ''
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Locations');
+    const whName = (store.data.warehouse?.name || 'warehouse').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+    XLSX.writeFile(wb, `${whName}_locations.xlsx`);
+  });
+
+  document.getElementById('fileImportInventory').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (typeof XLSX === 'undefined') { alert('The Excel library did not load — check your connection and try again.'); e.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const byCode = new Map(store.listLocations().map((loc) => [loc.code, loc]));
+        const matched = [];
+        let unmatched = 0, blank = 0;
+        rows.forEach((row) => {
+          const code = String(row['Location Code'] || '').trim();
+          if (!code) return;
+          const partNumber = String(row['Part Number'] || '').trim();
+          if (!partNumber) { blank++; return; } // no part number = location is empty
+          const loc = byCode.get(code);
+          if (!loc) { unmatched++; return; }
+          matched.push({
+            id: Model.uid('inv'),
+            code: loc.code,
+            rackId: loc.rackId,
+            rackName: loc.rackName,
+            bayIndex: loc.bayIndex,
+            bayLabel: loc.bayLabel,
+            levelIndex: loc.levelIndex,
+            levelNumber: loc.levelNumber,
+            locationIndex: loc.locationIndex,
+            locationLabel: loc.locationLabel,
+            partNumber,
+            quantity: Number(row['Quantity']) || 1
+          });
+        });
+        store.setInventory(matched);
+        let msg = `Imported ${matched.length} occupied location(s).`;
+        if (unmatched) msg += ` ${unmatched} row(s) had a location code that doesn't match the current model (renamed rack? changed bay count?) and were skipped — try re-exporting the location list.`;
+        alert(msg);
+      } catch (err) {
+        alert('Could not read that file: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('btnClearInventory').addEventListener('click', () => {
+    if (!store.data.inventory.length) return;
+    if (confirm('Clear all inventory data? This only clears the simulated occupancy — racks and bays are unaffected.')) {
+      store.clearInventory();
+    }
+  });
+
   // ---------------- Legend (2D tab) ----------------
   function renderLegend() {
     const legend = document.getElementById('planLegend');
@@ -1452,6 +1582,9 @@
     renderRackTemplateOptions();
     renderRacksGate();
     renderRacksTable();
+    renderInventoryGate();
+    renderInventorySummary();
+    renderInventoryTable();
     renderLegend();
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
