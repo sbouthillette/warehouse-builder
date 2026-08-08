@@ -338,9 +338,17 @@ h2 {
   flex-direction: column;
   gap: var(--sp-6);
 }
+/* Deliberately NOT position:sticky. It shares .split-main-col with the item
+   list below it, so a sticky preview stays pinned across the *entire*
+   column's scroll range (preview + list combined) — meaning as the list
+   scrolls up past it, the list's rows pass behind the pinned preview and
+   get visually hidden under it (sticky/positioned elements always paint
+   above static in-flow siblings, regardless of DOM order). Keeping this
+   static lets the preview and the list scroll together as one block, so
+   the list is never obscured. (.split-params-col alongside it is a
+   separate column and stays sticky/self-scrolling without this issue.) */
 .split-preview-col {
-  position: sticky;
-  top: 0;
+  position: static;
 }
 .split-params-col {
   width: 380px;

@@ -563,6 +563,7 @@
         <td>${z.x}</td><td>${z.y}</td><td>${z.width}</td><td>${z.length}</td>
         <td>${z.kind === 'obstacle' ? z.height + ' m' : '—'}</td>
         <td>
+          <button class="icon-btn" data-act="convert" data-id="${z.id}" title="Convert to ${z.kind === 'obstacle' ? 'Zone' : 'Obstacle'}">⇄</button>
           <button class="icon-btn" data-act="edit" data-id="${z.id}" title="Edit">✎</button>
           <button class="icon-btn" data-act="del" data-id="${z.id}" title="Delete">✕</button>
         </td>`;
@@ -571,6 +572,22 @@
     tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       if (confirm('Delete this zone/obstacle?')) store.deleteZone(b.dataset.id);
+    }));
+    tbody.querySelectorAll('[data-act="convert"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const z = store.data.zones.find((zz) => zz.id === b.dataset.id);
+      if (!z) return;
+      const newKind = z.kind === 'obstacle' ? 'zone' : 'obstacle';
+      // Reset to the new kind's default type (the old type's vocabulary —
+      // e.g. "Storage" — doesn't apply once it becomes an Obstacle, and vice
+      // versa); other fields (position, footprint, color) carry over as-is.
+      store.updateZone(z.id, { kind: newKind, type: newKind === 'obstacle' ? 'Column' : 'Storage' });
+      // If the item being converted is currently open in the edit form, keep
+      // the form in sync rather than leaving it showing the stale kind.
+      if (editingZoneId === z.id) {
+        const updated = store.data.zones.find((zz) => zz.id === z.id);
+        if (updated) loadZoneIntoForm(updated);
+      }
     }));
     tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
       const z = store.data.zones.find((zz) => zz.id === cell.dataset.id);
@@ -1240,6 +1257,17 @@
 
   document.getElementById('btnFitPlan').addEventListener('click', () => {
     if (window.Canvas2D) window.Canvas2D.resetView();
+  });
+
+  // ---------------- Dynamic Spatial Model (3D) camera presets ----------------
+  document.getElementById('btnView3dReset').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.resetView(store);
+  });
+  document.getElementById('btnView3dTop').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.topView(store);
+  });
+  document.getElementById('btnView3dIso').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.isometricView(store);
   });
 
   // ---------------- helpers ----------------

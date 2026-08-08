@@ -169,10 +169,6 @@
 
             <div class="split-params-col">
               <form id="formZone" class="card form-grid">
-                <div class="form-actions form-actions-sticky full-row">
-                  <button type="submit" class="btn btn-primary">Add Zone</button>
-                  <button type="button" id="btnCancelZoneEdit" class="btn btn-ghost" hidden>Cancel</button>
-                </div>
                 <label>Kind
                   <select id="zoneKind">
                     <option value="zone">Zone (flat)</option>
@@ -216,6 +212,10 @@
                 <label>Color
                   <input type="color" id="zoneColor" value="#BC5C92" />
                 </label>
+                <div class="form-actions full-row">
+                  <button type="submit" class="btn btn-primary">Add Zone</button>
+                  <button type="button" id="btnCancelZoneEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
               </form>
             </div>
           </div>
@@ -468,6 +468,11 @@
       <section id="tab-view3d" class="tab-panel">
         <h2>Dynamic Spatial Model (3D)</h2>
         <p class="hint">Drag to orbit, scroll to zoom, right-click drag to pan.</p>
+        <div class="canvas-toolbar canvas-toolbar-right">
+          <button type="button" id="btnView3dReset" class="btn btn-ghost">Reset View</button>
+          <button type="button" id="btnView3dTop" class="btn btn-ghost">Top View</button>
+          <button type="button" id="btnView3dIso" class="btn btn-ghost">Isometric View</button>
+        </div>
         <div id="threeContainer" class="three-wrap"></div>
       </section>
 

@@ -361,6 +361,57 @@ function buildRacks(racks, store) {
   });
 }
 
+// Computes the warehouse's bounding-box center (as a target for the
+// controls) and a diagonal/height figure used to size each camera preset
+// below. Returns null if there's no warehouse shell yet to frame.
+function computeFrame(store) {
+  const wh = store.data.warehouse;
+  if (!wh || !wh.shape || wh.shape.length < 3) return null;
+  const bounds = window.WarehouseModel.polygonBounds(wh.shape);
+  const target = new THREE.Vector3(bounds.minX + bounds.width / 2, 0, -(bounds.minY + bounds.length / 2));
+  const diag = Math.sqrt(bounds.width * bounds.width + bounds.length * bounds.length) || 10;
+  return { target, diag, height: wh.height || 5 };
+}
+
+// Default "reset" framing — a 3/4 angled view looking back at the shell from
+// the +X/+Z side, sized to comfortably fit the whole footprint. Same framing
+// used automatically the first time a warehouse is opened.
+function resetView(store) {
+  const frame = computeFrame(store);
+  if (!frame || !camera || !controls) return;
+  const { target, diag, height } = frame;
+  controls.target.copy(target);
+  camera.position.set(target.x + diag * 0.55, Math.max(height * 1.4, diag * 0.4), target.z + diag * 0.55);
+  controls.update();
+}
+
+// Straight-down, top-down floor-plan-style view. A tiny Z offset keeps the
+// camera off the exact vertical axis so OrbitControls doesn't hit the
+// polar-angle singularity (which can otherwise make orbiting feel "stuck"
+// right after snapping to this view).
+function topView(store) {
+  const frame = computeFrame(store);
+  if (!frame || !camera || !controls) return;
+  const { target, diag } = frame;
+  controls.target.copy(target);
+  camera.position.set(target.x, Math.max(diag * 1.2, 20), target.z + 0.01);
+  controls.update();
+}
+
+// A true isometric angle (equal foreshortening on all 3 axes) rather than
+// the slightly flatter default "reset" angle — useful when you want a more
+// technical/schematic look at the model.
+function isometricView(store) {
+  const frame = computeFrame(store);
+  if (!frame || !camera || !controls) return;
+  const { target, diag, height } = frame;
+  const dist = Math.max(diag, height) * 0.9 + 5;
+  const iso = new THREE.Vector3(1, 1, 1).normalize();
+  controls.target.copy(target);
+  camera.position.set(target.x + iso.x * dist, iso.y * dist, target.z + iso.z * dist);
+  controls.update();
+}
+
 function render(store) {
   if (!ready) init();
   if (!group) return;
@@ -371,14 +422,7 @@ function render(store) {
   buildZones(store.data.zones);
   buildRacks(store.data.racks, store);
   buildDoors(store.data.doors, wh);
-
-  // frame camera on the polygon's bounding box
-  const bounds = window.WarehouseModel.polygonBounds(wh.shape);
-  const target = new THREE.Vector3(bounds.minX + bounds.width / 2, 0, -(bounds.minY + bounds.length / 2));
-  controls.target.copy(target);
-  const diag = Math.sqrt(bounds.width * bounds.width + bounds.length * bounds.length) || 10;
-  camera.position.set(target.x + diag * 0.55, Math.max(wh.height * 1.4, diag * 0.4), target.z + diag * 0.55);
-  controls.update();
+  resetView(store);
 }
 
-window.ThreeView = { render };
+window.ThreeView = { render, resetView, topView, isometricView };
