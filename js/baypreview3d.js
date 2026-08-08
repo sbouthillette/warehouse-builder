@@ -69,6 +69,25 @@ function animate() {
   if (renderer && scene && camera) renderer.render(scene, camera);
 }
 
+// Small floating text label (e.g. "A", "B") marking one discrete location
+// within a level's opening. Transparent background — just the glyph — so it
+// doesn't clutter the preview the way an opaque chip would at this scale.
+function makeLabelSprite(text) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = 96; canvas.height = 96;
+  ctx.font = 'bold 56px sans-serif';
+  ctx.fillStyle = '#1a1a18'; // ink
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.35, 0.35, 1);
+  return sprite;
+}
+
 function clearGroup() {
   while (group.children.length) {
     const obj = group.children.pop();
@@ -139,6 +158,27 @@ function buildBay(tpl) {
     const back = new THREE.Mesh(beamGeo.clone(), beamMat);
     back.position.set(startX + spacing / 2, levelY + bH / 2, uD - bT / 2);
     group.add(back);
+  });
+
+  // Location labels (e.g. "A"/"B") floating within each level's opening,
+  // one per discrete location — skipped for single-location levels (an
+  // unlabeled open shelf, nothing to distinguish). The opening's vertical
+  // span runs from this level's beam top (or the floor, if ground-level) up
+  // to the bottom of the next level's beam (or the top of the uprights, for
+  // the topmost level).
+  levelElevations.forEach((lv, i) => {
+    const labels = window.WarehouseModel.generateLocationLabels(lv.locations);
+    if (labels.length <= 1) return; // single location — nothing to label
+    const openBottom = lv.hasBeam ? lv.topY / 1000 : 0;
+    const nextBottomMm = levelElevations[i + 1] ? levelElevations[i + 1].bottomY : tpl.upright.height;
+    const openTop = nextBottomMm / 1000;
+    const midY = (openBottom + openTop) / 2;
+    labels.forEach((label, k) => {
+      const segCenter = startX + (spacing * (k + 0.5)) / labels.length;
+      const sprite = makeLabelSprite(label);
+      sprite.position.set(segCenter, midY, bT + 0.08);
+      group.add(sprite);
+    });
   });
 
   // Ground grid for scale reference.

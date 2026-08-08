@@ -310,8 +310,8 @@ function buildRacks(racks, store) {
 
     // beams per level, front (z=bT/2) and back (z=uD-bT/2). Level elevations
     // account for the "ground level" option (bottom level resting on the
-    // floor with no beam) and treat levels.spacing as the clear opening
-    // between beam faces, not a center-to-center distance.
+    // floor with no beam) and each level's own independently-configured
+    // clear height (not a single uniform spacing across every level).
     const levelElevations = window.WarehouseModel.computeLevelElevations(tpl);
     levelElevations.forEach((lv) => {
       if (!lv.hasBeam) return; // floor-resting bottom level — nothing to draw
@@ -326,6 +326,29 @@ function buildRacks(racks, store) {
         const back = new THREE.Mesh(beamGeo.clone(), beamMat);
         back.position.set(startX + spacing / 2, levelY + bH / 2, uD - bT / 2);
         rackGroup.add(back);
+      }
+    });
+
+    // Per-location labels (e.g. "A"/"B") floating within each level's
+    // opening, one per bay per discrete location — skipped for
+    // single-location levels (an unlabeled open shelf). Mirrors the same
+    // treatment in the live Bay Builder preview (baypreview3d.js).
+    levelElevations.forEach((lv, li) => {
+      const locLabels = window.WarehouseModel.generateLocationLabels(lv.locations);
+      if (locLabels.length <= 1) return;
+      const openBottom = lv.hasBeam ? lv.topY / 1000 : 0;
+      const nextBottomMm = levelElevations[li + 1] ? levelElevations[li + 1].bottomY : tpl.upright.height;
+      const openTop = nextBottomMm / 1000;
+      const midY = (openBottom + openTop) / 2;
+      for (let b = 0; b < bayCount; b++) {
+        const startX = b * (spacing + uW) + uW;
+        locLabels.forEach((loc, k) => {
+          const segCenter = startX + (spacing * (k + 0.5)) / locLabels.length;
+          const tag = makeTextSprite(loc);
+          tag.scale.set(0.5, 0.3, 1);
+          tag.position.set(segCenter, midY, bT + 0.05);
+          rackGroup.add(tag);
+        });
       }
     });
 

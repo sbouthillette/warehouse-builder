@@ -298,52 +298,95 @@ function defaultBays(count) {
   return Array.from({ length: n }, (_, i) => ({ id: uid('slot'), label: `Bay ${i + 1}`, palletCount: 1 }));
 }
 
+// Generates default location labels for a level with `count` discrete
+// pick/pallet locations across its width: a single location gets no label
+// (an unlabeled open shelf, today's pre-feature behavior); 2+ locations get
+// "A", "B", "C", ... (falling back to numbers past 26).
+function generateLocationLabels(count) {
+  const n = Math.max(1, Math.round(Number(count)) || 1);
+  if (n === 1) return [''];
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  return Array.from({ length: n }, (_, i) => (i < letters.length ? letters[i] : String(i + 1)));
+}
+
+// Normalizes one level entry of a bay template's `levels` array.
+//   clearHeight — for level 0: height (mm) above the floor to this level's
+//     beam (ignored if restsOnFloor); for level i>0: the CLEAR OPENING (mm)
+//     between the previous level's beam and this one's — i.e. each level's
+//     height is independently configurable, not a single uniform spacing.
+//   restsOnFloor — only meaningful for level 0: true means the bottom level
+//     sits directly on the floor with no beam.
+//   locations — how many discrete pick/pallet locations span this level's
+//     width (e.g. 2 for "A"/"B" pallet positions, 5-6 for small-item
+//     picking shelves); always >= 1.
+function normalizeBayLevel(lv, index) {
+  return {
+    id: (lv && lv.id) || uid('level'),
+    clearHeight: Number(lv && lv.clearHeight) || (index === 0 ? 150 : 1600),
+    restsOnFloor: index === 0 ? !!(lv && lv.restsOnFloor) : false,
+    locations: Math.max(1, Math.round(Number(lv && lv.locations)) || 1)
+  };
+}
+
 // Upgrades a legacy bay template — where a single "upright" box spanned the
 // whole rack depth (upright.depth) — into the front/back-post model: the
 // post itself gets a small profile thickness, and the old depth value
 // becomes frameDepth (distance between the two posts), which keeps the
-// rack's footprint identical to before the migration.
+// rack's footprint identical to before the migration. Also upgrades a
+// legacy `levels` object ({count, baseHeight, spacing, groundLevel} —
+// applying uniformly to every level) into the current per-level array,
+// preserving the exact same elevations and defaulting every upgraded level
+// to a single unlabeled location (matching pre-upgrade behavior exactly).
 function normalizeBayTemplate(t) {
   if (!t) return t;
   if (t.frameDepth == null && t.upright && t.upright.depth != null) {
     t.frameDepth = t.upright.depth;
     t.upright = { width: t.upright.width, thickness: 60, height: t.upright.height };
   }
-  // Legacy templates predate the "ground level" option — default them to a
-  // raised bottom level (their original behavior) rather than floor-resting.
-  if (t.levels && t.levels.groundLevel == null) {
-    t.levels.groundLevel = false;
+  if (t.levels && !Array.isArray(t.levels)) {
+    const old = t.levels;
+    const count = Math.max(1, Math.round(Number(old.count)) || 1);
+    const levels = [];
+    for (let i = 0; i < count; i++) {
+      levels.push({
+        id: uid('level'),
+        clearHeight: i === 0 ? (Number(old.baseHeight) || 0) : (Number(old.spacing) || 0),
+        restsOnFloor: i === 0 ? !!old.groundLevel : false,
+        locations: 1
+      });
+    }
+    t.levels = levels;
+  } else if (Array.isArray(t.levels)) {
+    t.levels = t.levels.map((lv, i) => normalizeBayLevel(lv, i));
   }
   return t;
 }
 
 // Computes the elevation (mm, above the floor) of each level's beam in a bay
-// template. `levels.spacing` is the CLEAR OPENING between consecutive beam
-// faces (and between the floor and the first raised beam, when the bottom
-// level rests on the floor) — not a center-to-center or bottom-to-bottom
-// distance. Returns one entry per level:
-//   { index, bottomY, topY, hasBeam } — bottomY/topY in mm above the floor;
-//   hasBeam is false only for a floor-resting bottom level (no beam mesh).
+// template, from its per-level `clearHeight`/`restsOnFloor`/`locations`
+// (see normalizeBayLevel above). Returns one entry per level:
+//   { index, bottomY, topY, hasBeam, locations } — bottomY/topY in mm above
+//   the floor; hasBeam is false only for a floor-resting bottom level (no
+//   beam mesh).
 function computeLevelElevations(tpl) {
-  const count = Math.max(1, Math.round(Number(tpl.levels.count)) || 1);
+  const levels = Array.isArray(tpl.levels) ? tpl.levels : [];
   const bH = Number(tpl.beam.height) || 0;
-  const spacing = Number(tpl.levels.spacing) || 0;
-  const baseHeight = Number(tpl.levels.baseHeight) || 0;
-  const groundLevel = !!tpl.levels.groundLevel;
 
   const out = [];
   let prevTop = 0; // top face of the previous support; the floor starts at 0
-  for (let i = 0; i < count; i++) {
-    if (i === 0 && groundLevel) {
-      out.push({ index: i, bottomY: 0, topY: 0, hasBeam: false });
+  levels.forEach((lv, i) => {
+    const locations = Math.max(1, Math.round(Number(lv.locations)) || 1);
+    if (i === 0 && lv.restsOnFloor) {
+      out.push({ index: i, bottomY: 0, topY: 0, hasBeam: false, locations });
       prevTop = 0;
-      continue;
+      return;
     }
-    const bottomY = i === 0 ? baseHeight : prevTop + spacing;
+    const clear = Number(lv.clearHeight) || 0;
+    const bottomY = i === 0 ? clear : prevTop + clear;
     const topY = bottomY + bH;
-    out.push({ index: i, bottomY, topY, hasBeam: true });
+    out.push({ index: i, bottomY, topY, hasBeam: true, locations });
     prevTop = topY;
-  }
+  });
   return out;
 }
 
@@ -605,10 +648,10 @@ class Store {
     const src = (key) => (tpl[key] !== undefined ? tpl[key] : existing && existing[key]);
     const upright = tpl.upright || (existing && existing.upright) || {};
     const beam = tpl.beam || (existing && existing.beam) || {};
-    const levels = tpl.levels || (existing && existing.levels) || {};
     const existingUpright = existing ? existing.upright : {};
     const existingBeam = existing ? existing.beam : {};
-    const existingLevels = existing ? existing.levels : {};
+    const rawLevels = tpl.levels !== undefined ? tpl.levels : ((existing && existing.levels) || []);
+    const levels = (Array.isArray(rawLevels) ? rawLevels : []).map((lv, i) => normalizeBayLevel(lv, i));
     return {
       name: src('name') || 'Bay Template',
       upright: {
@@ -623,12 +666,7 @@ class Store {
         thickness: Number(beam.thickness !== undefined ? beam.thickness : existingBeam.thickness)
       },
       baySpacing: Number(src('baySpacing')),
-      levels: {
-        count: Number(levels.count !== undefined ? levels.count : existingLevels.count),
-        baseHeight: Number(levels.baseHeight !== undefined ? levels.baseHeight : existingLevels.baseHeight) || 0,
-        spacing: Number(levels.spacing !== undefined ? levels.spacing : existingLevels.spacing),
-        groundLevel: !!(levels.groundLevel !== undefined ? levels.groundLevel : existingLevels.groundLevel)
-      },
+      levels: levels.length ? levels : [normalizeBayLevel({}, 0)],
       maxWeightPerLevelKg: Number(src('maxWeightPerLevelKg')) || 0
     };
   }
@@ -714,5 +752,6 @@ window.WarehouseModel = {
   uid, emptyProject, rectanglePoints, lShapePoints, polygonBounds, polygonArea,
   normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays,
   computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone,
-  pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge
+  pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge,
+  generateLocationLabels, normalizeBayLevel
 };

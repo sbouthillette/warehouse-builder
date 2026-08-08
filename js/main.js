@@ -783,7 +783,58 @@
 
   // ---------------- Tab 3: Bay Builder ----------------
   const formBay = document.getElementById('formBay');
+  const levelCountInput = document.getElementById('levelCount');
   let lastSavedBayId = null; // used to scroll/highlight the saved row in the table below
+
+  // Per-level configuration (clear height, ground-level flag, # of discrete
+  // locations), kept in sync with "# of Levels" — mirrors the draftBays
+  // pattern used for Racks & Aisles' per-bay identifiers table.
+  let draftLevels = Array.from({ length: Math.max(1, Number(levelCountInput.value) || 4) }, (_, i) => Model.normalizeBayLevel({}, i));
+
+  function renderLevelConfigTable() {
+    const tbody = document.querySelector('#levelConfigTable tbody');
+    tbody.innerHTML = '';
+    draftLevels.forEach((lv, i) => {
+      const tr = document.createElement('tr');
+      const grounded = i === 0 && lv.restsOnFloor;
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${i === 0 ? `<input type="checkbox" class="lvGround" ${lv.restsOnFloor ? 'checked' : ''} />` : '—'}</td>
+        <td><input type="number" class="lvHeight" min="0" step="1" value="${lv.clearHeight}" ${grounded ? 'disabled' : ''}
+          title="${i === 0 ? "Height above the floor to this level's beam (mm)" : 'Clear opening above the beam below (mm)'}" /></td>
+        <td><input type="number" class="lvLocations" min="1" step="1" value="${lv.locations}"
+          title="How many discrete pick/pallet locations span this level (1 = single unlabeled, 2 = A/B, etc.)" /></td>`;
+      tbody.appendChild(tr);
+      if (i === 0) {
+        tr.querySelector('.lvGround').addEventListener('change', (e) => {
+          lv.restsOnFloor = e.target.checked;
+          renderLevelConfigTable();
+          renderBayPreview();
+        });
+      }
+      tr.querySelector('.lvHeight').addEventListener('input', (e) => {
+        lv.clearHeight = Number(e.target.value) || 0;
+        renderBayPreview();
+      });
+      tr.querySelector('.lvLocations').addEventListener('input', (e) => {
+        lv.locations = Math.max(1, Number(e.target.value) || 1);
+        renderBayPreview();
+      });
+    });
+  }
+
+  function syncLevelsToCount() {
+    const count = Math.max(1, Math.round(Number(levelCountInput.value)) || 1);
+    if (draftLevels.length === count) return;
+    const next = draftLevels.slice(0, count);
+    while (next.length < count) next.push(Model.normalizeBayLevel({}, next.length));
+    draftLevels = next;
+    renderLevelConfigTable();
+    renderBayPreview();
+  }
+  levelCountInput.addEventListener('input', syncLevelsToCount);
+  renderLevelConfigTable();
+
   formBay.addEventListener('submit', (e) => {
     e.preventDefault();
     try {
@@ -801,12 +852,7 @@
           thickness: document.getElementById('beamThickness').value
         },
         baySpacing: document.getElementById('baySpacing').value,
-        levels: {
-          count: document.getElementById('levelCount').value,
-          baseHeight: document.getElementById('levelBase').value,
-          spacing: document.getElementById('levelSpacing').value,
-          groundLevel: document.getElementById('levelGroundLevel').checked
-        },
+        levels: draftLevels,
         maxWeightPerLevelKg: document.getElementById('bayMaxWeight').value
       };
       payload.name = payload.name.trim();
@@ -835,12 +881,10 @@
       document.getElementById('beamWidth').value = 2700;
       document.getElementById('beamThickness').value = 50;
       document.getElementById('baySpacing').value = 2700;
-      document.getElementById('levelCount').value = 4;
-      document.getElementById('levelBase').value = 150;
-      document.getElementById('levelSpacing').value = 1600;
-      document.getElementById('levelGroundLevel').checked = false;
+      levelCountInput.value = 4;
+      draftLevels = Array.from({ length: 4 }, (_, i) => Model.normalizeBayLevel({}, i));
+      renderLevelConfigTable();
       document.getElementById('bayMaxWeight').value = 1000;
-      updateLevelBaseFieldState();
       renderBayPreview();
       // Visible confirmation: the saved-templates table lives below the fold
       // (under the split-editor row), so without this, saving can look like
@@ -858,19 +902,6 @@
       alert('Could not save the bay template: ' + err.message);
     }
   });
-
-  // Base Level Height only applies when the bottom level is a raised beam —
-  // grey it out (and skip it in the draft/payload math) when the bottom
-  // level is set to rest directly on the floor instead.
-  function updateLevelBaseFieldState() {
-    const grounded = document.getElementById('levelGroundLevel').checked;
-    document.getElementById('levelBase').disabled = grounded;
-  }
-  document.getElementById('levelGroundLevel').addEventListener('change', () => {
-    updateLevelBaseFieldState();
-    renderBayPreview();
-  });
-  updateLevelBaseFieldState();
 
   // Reads the current (unsaved) Bay Builder form values into a plain object
   // shaped like a bay template, for live 3D preview as the user types.
@@ -892,12 +923,7 @@
         thickness: num('beamThickness', 50)
       },
       baySpacing: num('baySpacing', 2700),
-      levels: {
-        count: Math.max(1, Math.round(num('levelCount', 4))),
-        baseHeight: num('levelBase', 150) || 0,
-        spacing: num('levelSpacing', 1600),
-        groundLevel: document.getElementById('levelGroundLevel').checked
-      }
+      levels: draftLevels
     };
   }
 
@@ -907,8 +933,7 @@
 
   const bayLiveFields = [
     'uprightWidth', 'uprightThickness', 'uprightHeight', 'frameDepth',
-    'beamHeight', 'beamWidth', 'beamThickness',
-    'baySpacing', 'levelCount', 'levelBase', 'levelSpacing'
+    'beamHeight', 'beamWidth', 'beamThickness', 'baySpacing'
   ];
   bayLiveFields.forEach((id) => {
     const el = document.getElementById(id);
@@ -934,11 +959,11 @@
     document.getElementById('beamWidth').value = t.beam.width;
     document.getElementById('beamThickness').value = t.beam.thickness;
     document.getElementById('baySpacing').value = t.baySpacing;
-    document.getElementById('levelCount').value = t.levels.count;
-    document.getElementById('levelBase').value = t.levels.baseHeight;
-    document.getElementById('levelSpacing').value = t.levels.spacing;
-    document.getElementById('levelGroundLevel').checked = !!t.levels.groundLevel;
-    updateLevelBaseFieldState();
+    draftLevels = Array.isArray(t.levels) && t.levels.length
+      ? t.levels.map((lv, i) => Model.normalizeBayLevel(lv, i))
+      : [Model.normalizeBayLevel({}, 0)];
+    levelCountInput.value = draftLevels.length;
+    renderLevelConfigTable();
     document.getElementById('bayMaxWeight').value = t.maxWeightPerLevelKg;
     editingBayId = t.id;
     formBay.querySelector('button[type=submit]').textContent = 'Update Bay Template';
@@ -963,12 +988,10 @@
     document.getElementById('beamWidth').value = 2700;
     document.getElementById('beamThickness').value = 50;
     document.getElementById('baySpacing').value = 2700;
-    document.getElementById('levelCount').value = 4;
-    document.getElementById('levelBase').value = 150;
-    document.getElementById('levelSpacing').value = 1600;
-    document.getElementById('levelGroundLevel').checked = false;
+    levelCountInput.value = 4;
+    draftLevels = Array.from({ length: 4 }, (_, i) => Model.normalizeBayLevel({}, i));
+    renderLevelConfigTable();
     document.getElementById('bayMaxWeight').value = 1000;
-    updateLevelBaseFieldState();
     renderBayPreview();
   });
 
@@ -978,13 +1001,15 @@
     store.data.bayTemplates.forEach((t) => {
       const tr = document.createElement('tr');
       tr.dataset.id = t.id;
+      const heights = t.levels.map((lv, i) => (i === 0 && lv.restsOnFloor ? 'floor' : `${lv.clearHeight}`)).join('/');
+      const locs = t.levels.map((lv) => lv.locations).join('/');
       tr.innerHTML = `
         <td class="bay-name-cell" data-act="view" data-id="${t.id}" title="Click to edit this bay">${escapeHtml(t.name)}</td>
         <td>${t.upright.width}×${t.upright.thickness}×${t.upright.height}</td>
         <td>${t.frameDepth} mm</td>
         <td>${t.beam.height}×${t.beam.width}×${t.beam.thickness}</td>
         <td>${t.baySpacing} mm</td>
-        <td>${t.levels.count} (${t.levels.groundLevel ? 'bottom on floor' : `base ${t.levels.baseHeight}mm`}, clear ${t.levels.spacing}mm)</td>
+        <td>${t.levels.length} level${t.levels.length === 1 ? '' : 's'} — H: ${heights}mm — Loc: ${locs}</td>
         <td>${t.maxWeightPerLevelKg}</td>
         <td>
           <button class="icon-btn" data-act="edit" data-id="${t.id}" title="Edit">✎</button>
