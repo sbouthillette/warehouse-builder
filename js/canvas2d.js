@@ -406,7 +406,13 @@
             const frac = (i + 0.5) / r.bayCount;
             ctx.save();
             if (rot) {
-              const ty = y + ph * frac;
+              // Screen Y is inverted relative to world Y (worldToScreen flips
+              // it for the usual "up = north" plan convention), but `y`/`ph`
+              // here are screen-space min/max — so a naive frac would place
+              // Bay 1 at the far (high-world-Y) end instead of the origin
+              // corner. Flip the fraction to keep Bay 1 anchored at the
+              // origin dot, matching the un-rotated case and the 3D view.
+              const ty = y + ph * (1 - frac);
               ctx.translate(x + pw / 2, ty);
               ctx.rotate(-Math.PI / 2);
               ctx.fillText(text, 0, -10); // small offset toward one edge, avoids the centered rack-name label
