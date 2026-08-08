@@ -516,6 +516,7 @@ class Store {
   }
 
   async deleteWarehouse(id) {
+    if (id === this.currentId && this.isLocked()) return; // safety net — UI disables this button when locked
     const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
     if (!res.ok && res.status !== 204) throw new Error(`Failed to delete warehouse (${res.status})`);
     if (this.currentId === id) {
@@ -584,6 +585,7 @@ class Store {
   // shape: ordered array of {x, y} vertices (metres) tracing the outline —
   // supports rectangles, L-shapes, or any irregular/non-90° polygon.
   setWarehouse({ name, height, shape }) {
+    if (this.isLocked()) return; // safety net — the UI already disables these controls when locked
     this.data.warehouse = {
       id: this.data.warehouse?.id || uid('wh'),
       name: name || 'Warehouse',
@@ -607,6 +609,7 @@ class Store {
   }
 
   clearWarehouseShell() {
+    if (this.isLocked()) return;
     this.data.warehouse = null;
     this.data.zones = [];
     this.data.racks = [];
@@ -645,6 +648,7 @@ class Store {
   }
 
   addZone(zone) {
+    if (this.isLocked()) return null;
     const z = { id: uid('zone'), ...this._normalizeZonePayload(zone, null) };
     this.data.zones.push(z);
     this.notify();
@@ -652,6 +656,7 @@ class Store {
   }
 
   updateZone(id, patch) {
+    if (this.isLocked()) return;
     const z = this.data.zones.find((zz) => zz.id === id);
     if (!z) return;
     Object.assign(z, this._normalizeZonePayload(patch, z));
@@ -659,6 +664,7 @@ class Store {
   }
 
   deleteZone(id) {
+    if (this.isLocked()) return;
     this.data.zones = this.data.zones.filter((z) => z.id !== id);
     this.notify();
   }
@@ -667,6 +673,7 @@ class Store {
   // wallIndex references an edge of the current warehouse shape (see
   // wallSegments()); offset/width/height are in metres.
   addDoor(door) {
+    if (this.isLocked()) return null;
     const d = normalizeDoor({
       id: uid('door'),
       label: door.label,
@@ -682,6 +689,7 @@ class Store {
   }
 
   updateDoor(id, patch) {
+    if (this.isLocked()) return;
     const d = this.data.doors.find((dd) => dd.id === id);
     if (!d) return;
     Object.assign(d, normalizeDoor({ ...d, ...patch }));
@@ -689,6 +697,7 @@ class Store {
   }
 
   deleteDoor(id) {
+    if (this.isLocked()) return;
     this.data.doors = this.data.doors.filter((d) => d.id !== id);
     this.notify();
   }
@@ -725,6 +734,7 @@ class Store {
   }
 
   addBayTemplate(tpl) {
+    if (this.isLocked()) return null;
     const t = { id: uid('bay'), ...this._normalizeBayPayload(tpl, null) };
     this.data.bayTemplates.push(t);
     this.notify();
@@ -732,6 +742,7 @@ class Store {
   }
 
   updateBayTemplate(id, patch) {
+    if (this.isLocked()) return;
     const t = this.data.bayTemplates.find((tt) => tt.id === id);
     if (!t) return;
     Object.assign(t, this._normalizeBayPayload(patch, t));
@@ -739,6 +750,7 @@ class Store {
   }
 
   deleteBayTemplate(id) {
+    if (this.isLocked()) return;
     this.data.bayTemplates = this.data.bayTemplates.filter((t) => t.id !== id);
     // orphan racks referencing this template are left as-is but will be flagged in UI
     this.notify();
@@ -746,6 +758,7 @@ class Store {
 
   // ---- Racks -------------------------------------------------------------
   addRack(rack) {
+    if (this.isLocked()) return null;
     const bayCount = Number(rack.bayCount);
     const r = {
       id: uid('rack'),
@@ -768,6 +781,7 @@ class Store {
   }
 
   updateRack(id, patch) {
+    if (this.isLocked()) return;
     const r = this.data.racks.find((rr) => rr.id === id);
     if (!r) return;
     Object.assign(r, patch);
@@ -776,6 +790,7 @@ class Store {
   }
 
   deleteRack(id) {
+    if (this.isLocked()) return;
     this.data.racks = this.data.racks.filter((r) => r.id !== id);
     this.notify();
   }

@@ -142,11 +142,6 @@
     if (!picker.value) return;
     try {
       await store.loadWarehouse(picker.value);
-      if (!(await ensureUnlocked())) {
-        store.closeWarehouse();
-        await refreshWarehouseList();
-        return;
-      }
       resetWarehouseFormFromStore();
       if (window.Canvas2D) window.Canvas2D.resetView();
       switchTab('warehouse');
@@ -171,16 +166,45 @@
   document.getElementById('btnFirstWarehouse').addEventListener('click', createAndOpenWarehouse);
 
   // ---------------- Lock / unlock the currently open warehouse ----------------
-  // Soft protection only — the password gate lives entirely in this app's own
-  // UI (see ensureUnlocked below), not on the server, since /api/warehouses
-  // has no concept of a logged-in user. It's meant to deter accidental edits
-  // or casual browsing, not to secure the data against a determined actor.
+  // Locking puts the warehouse into read-only mode: it stays fully visible —
+  // 2D plan, 3D view, every table — but every editing control is disabled
+  // and the Store itself refuses to persist changes (see the isLocked()
+  // guards in model.js), so nothing can slip through. Unlocking (with the
+  // password) is the only way to make it editable again. This is a soft
+  // protection enforced by this app's own UI, not the server — /api/warehouses
+  // has no concept of a logged-in user — so it deters accidental edits or
+  // casual browsing, not a determined actor going around the UI.
   function renderLockButton() {
     const btn = document.getElementById('btnToggleLock');
     if (!btn || !store.currentId) { if (btn) btn.hidden = !store.currentId; return; }
     btn.hidden = false;
     const locked = store.isLocked();
     btn.textContent = locked ? '🔓 Unlock' : '🔒 Lock';
+  }
+
+  // Disables every control that adds/edits/deletes data while the currently
+  // open warehouse is locked — the 5 editing forms (Warehouse Shell's is a
+  // plain .split-params-col, not a <form>, so we target that class directly
+  // rather than a form id), each item table's Edit/Delete/Convert buttons,
+  // and the top-level Delete Warehouse button. Viewing (tables, 2D plan, 3D
+  // view, zoom/rotate/fit controls — none of which live inside these
+  // containers) stays fully interactive either way.
+  function applyLockUI() {
+    const locked = store.isLocked();
+    document.body.classList.toggle('warehouse-locked', locked);
+    const banner = document.getElementById('lockBanner');
+    if (banner) banner.hidden = !(locked && store.currentId);
+    document.querySelectorAll(
+      '#tab-warehouse .split-params-col, #tab-zones .split-params-col, ' +
+      '#tab-doors .split-params-col, #tab-bays .split-params-col, #tab-racks .split-params-col'
+    ).forEach((col) => {
+      col.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = locked; });
+    });
+    document.querySelectorAll(
+      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn'
+    ).forEach((el) => { el.disabled = locked; });
+    const delBtn = document.getElementById('btnDeleteWarehouse');
+    if (delBtn) delBtn.disabled = locked;
   }
 
   document.getElementById('btnToggleLock').addEventListener('click', async () => {
@@ -190,7 +214,7 @@
       if (pw === null) return;
       const ok = await store.unlockProject(pw);
       if (!ok) { alert('Incorrect password.'); return; }
-      alert('Warehouse unlocked.');
+      alert('Warehouse unlocked — editing is enabled again.');
     } else {
       const pw = prompt('Set a password to lock this warehouse:');
       if (pw === null) return;
@@ -198,25 +222,12 @@
       const confirmPw = prompt('Confirm the password:');
       if (confirmPw !== pw) { alert('Passwords did not match — nothing was locked.'); return; }
       await store.lockProject(pw);
-      alert('Warehouse locked. You’ll need this password to unlock it next time it’s opened.');
+      alert('Warehouse locked — it’s now read-only. Enter the password and click Unlock to make changes again.');
     }
     renderLockButton();
+    applyLockUI();
     refreshWarehouseList(store.currentId); // picker's 🔒 icon reflects the new state
   });
-
-  // Prompts for the password (with retry) if the currently-loaded project is
-  // locked; returns true once unlocked (or if it wasn't locked to begin
-  // with), false if the user cancels. Call after store.loadWarehouse(), before
-  // showing the warehouse's data in the UI.
-  async function ensureUnlocked() {
-    while (store.isLocked()) {
-      const pw = prompt(`"${store.data.warehouse?.name || 'This warehouse'}" is locked. Enter its password to unlock:`);
-      if (pw === null) return false;
-      const ok = await store.unlockProject(pw);
-      if (!ok) { alert('Incorrect password. Try again.'); continue; }
-    }
-    return true;
-  }
 
   document.getElementById('btnDeleteWarehouse').addEventListener('click', async () => {
     if (!store.currentId) return;
@@ -227,11 +238,6 @@
     const list = await refreshWarehouseList();
     if (list.length > 0) {
       await store.loadWarehouse(list[0].id);
-      if (!(await ensureUnlocked())) {
-        store.closeWarehouse();
-        await refreshWarehouseList();
-        return;
-      }
       resetWarehouseFormFromStore();
       if (window.Canvas2D) window.Canvas2D.resetView();
     }
@@ -297,6 +303,7 @@
         renderVertexTable(); renderShapePreview();
       });
     });
+    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
   }
 
   function renderShapePreview() {
@@ -891,6 +898,7 @@
         renderBayPreview();
       });
     });
+    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
   }
 
   function syncLevelsToCount() {
@@ -1139,6 +1147,7 @@
       tr.querySelector('.slotLabel').addEventListener('input', (e) => { slot.label = e.target.value; });
       tr.querySelector('.slotPallets').addEventListener('input', (e) => { slot.palletCount = Number(e.target.value) || 1; });
     });
+    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
   }
 
   function syncBaySlotsToCount() {
@@ -1441,6 +1450,10 @@
     if (currentTab === 'doors') renderDoorsPlanPreview();
     if (currentTab === 'zones') renderZonesPlanPreview();
     if (currentTab === 'racks') renderRacksPlanPreview();
+    // Runs last — after every table above has rebuilt its rows (and thus its
+    // Edit/Delete/Convert buttons) from scratch — so the disabled state
+    // always applies to the DOM that's actually on screen.
+    applyLockUI();
   }
 
   store.onChange(renderAll);
@@ -1455,11 +1468,6 @@
     if (list.length > 0) {
       try {
         await store.loadWarehouse(list[0].id);
-        if (!(await ensureUnlocked())) {
-          store.closeWarehouse();
-          await refreshWarehouseList();
-          return;
-        }
         resetWarehouseFormFromStore();
         if (window.Canvas2D) window.Canvas2D.resetView();
       } catch (err) {
