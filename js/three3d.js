@@ -457,6 +457,36 @@ function isometricView(store) {
   controls.update();
 }
 
+// Moves the camera toward/away from its current orbit target — used by the
+// Zoom In/Out buttons as a manual alternative to scroll-to-zoom.
+// factor < 1 moves closer (zoom in), > 1 moves farther away (zoom out).
+function zoomBy(factor) {
+  if (!camera || !controls) return;
+  const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+  offset.multiplyScalar(factor);
+  camera.position.copy(controls.target).add(offset);
+  controls.update();
+}
+function zoomIn() { zoomBy(1 / 1.25); }
+function zoomOut() { zoomBy(1.25); }
+
+// Orbits the camera around its current target by a fixed angle step — a
+// manual alternative to drag-to-orbit, e.g. for touch/precision use. Uses
+// spherical coordinates around the target so the camera's distance and
+// height above the target stay unchanged, only the angle changes.
+const ROTATE_STEP = Math.PI / 12; // 15°
+function rotateBy(azimuthDelta) {
+  if (!camera || !controls) return;
+  const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+  const spherical = new THREE.Spherical().setFromVector3(offset);
+  spherical.theta += azimuthDelta;
+  offset.setFromSpherical(spherical);
+  camera.position.copy(controls.target).add(offset);
+  controls.update();
+}
+function rotateLeft() { rotateBy(ROTATE_STEP); }
+function rotateRight() { rotateBy(-ROTATE_STEP); }
+
 function render(store) {
   if (!ready) init();
   if (!group) return;
@@ -470,4 +500,7 @@ function render(store) {
   resetView(store);
 }
 
-window.ThreeView = { render, resetView, topView, isometricView, setLabelsVisible, labelsAreVisible };
+window.ThreeView = {
+  render, resetView, topView, isometricView, setLabelsVisible, labelsAreVisible,
+  zoomIn, zoomOut, rotateLeft, rotateRight
+};

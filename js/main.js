@@ -515,6 +515,12 @@
   document.getElementById('btnFitZonesPlan').addEventListener('click', () => {
     if (window.ZonesPlanView) window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
   });
+  document.getElementById('btnZoomInZonesPlan').addEventListener('click', () => {
+    if (window.ZonesPlanView) window.ZonesPlanView.zoomIn();
+  });
+  document.getElementById('btnZoomOutZonesPlan').addEventListener('click', () => {
+    if (window.ZonesPlanView) window.ZonesPlanView.zoomOut();
+  });
 
   populateZoneTypeOptions('zone');
   updateZoneKindUI();
@@ -684,6 +690,12 @@
 
   document.getElementById('btnFitDoorsPlan').addEventListener('click', () => {
     if (window.DoorsPlanView) window.DoorsPlanView.resetView({ door: getDraftDoor() });
+  });
+  document.getElementById('btnZoomInDoorsPlan').addEventListener('click', () => {
+    if (window.DoorsPlanView) window.DoorsPlanView.zoomIn();
+  });
+  document.getElementById('btnZoomOutDoorsPlan').addEventListener('click', () => {
+    if (window.DoorsPlanView) window.DoorsPlanView.zoomOut();
   });
 
   document.getElementById('btnCancelDoorEdit').addEventListener('click', () => {
@@ -944,6 +956,18 @@
   // scratch on every call, so re-rendering the current draft is enough to
   // reset the (OrbitControls-manipulated) camera back to the fitted default.
   document.getElementById('btnFitBayPreview').addEventListener('click', renderBayPreview);
+  document.getElementById('btnBayZoomIn').addEventListener('click', () => {
+    if (window.BayPreview3D) window.BayPreview3D.zoomIn();
+  });
+  document.getElementById('btnBayZoomOut').addEventListener('click', () => {
+    if (window.BayPreview3D) window.BayPreview3D.zoomOut();
+  });
+  document.getElementById('btnBayRotateLeft').addEventListener('click', () => {
+    if (window.BayPreview3D) window.BayPreview3D.rotateLeft();
+  });
+  document.getElementById('btnBayRotateRight').addEventListener('click', () => {
+    if (window.BayPreview3D) window.BayPreview3D.rotateRight();
+  });
 
   // Populates the form with an existing template's values and puts the form
   // into edit mode for it — used by both the name-cell click and the pencil
@@ -1122,6 +1146,12 @@
   document.getElementById('btnFitRacksPlan').addEventListener('click', () => {
     if (window.RacksPlanView) window.RacksPlanView.resetView({ rack: getDraftRack() });
   });
+  document.getElementById('btnZoomInRacksPlan').addEventListener('click', () => {
+    if (window.RacksPlanView) window.RacksPlanView.zoomIn();
+  });
+  document.getElementById('btnZoomOutRacksPlan').addEventListener('click', () => {
+    if (window.RacksPlanView) window.RacksPlanView.zoomOut();
+  });
 
   document.getElementById('btnCancelRackEdit').addEventListener('click', () => {
     exitRackEditMode();
@@ -1283,6 +1313,12 @@
   document.getElementById('btnFitPlan').addEventListener('click', () => {
     if (window.Canvas2D) window.Canvas2D.resetView();
   });
+  document.getElementById('btnZoomInPlan').addEventListener('click', () => {
+    if (window.Canvas2D) window.Canvas2D.zoomIn();
+  });
+  document.getElementById('btnZoomOutPlan').addEventListener('click', () => {
+    if (window.Canvas2D) window.Canvas2D.zoomOut();
+  });
 
   // ---------------- Dynamic Spatial Model (3D) camera presets ----------------
   document.getElementById('btnView3dReset').addEventListener('click', () => {
@@ -1293,6 +1329,18 @@
   });
   document.getElementById('btnView3dIso').addEventListener('click', () => {
     if (window.ThreeView) window.ThreeView.isometricView(store);
+  });
+  document.getElementById('btnView3dZoomIn').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.zoomIn();
+  });
+  document.getElementById('btnView3dZoomOut').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.zoomOut();
+  });
+  document.getElementById('btnView3dRotateLeft').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.rotateLeft();
+  });
+  document.getElementById('btnView3dRotateRight').addEventListener('click', () => {
+    if (window.ThreeView) window.ThreeView.rotateRight();
   });
   document.getElementById('btnToggleLabels').addEventListener('click', () => {
     if (!window.ThreeView) return;

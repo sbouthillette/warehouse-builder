@@ -510,6 +510,57 @@
       if (lastDraft && lastDraft.rack) drawDraftRack(lastDraft.rack);
       drawDoors(store.data.doors, wh);
       if (lastDraft && lastDraft.door) drawDraftDoor(wh, lastDraft.door);
+      drawScaleBar();
+    }
+
+    // Rounds a raw "metres per target pixel width" value down to a tidy
+    // 1/2/5 × 10^n number (the same convention printed maps/CAD tools use
+    // for scale bars), so the bar reads e.g. "5 m" or "20 m" rather than an
+    // arbitrary value like "13.7 m".
+    function niceScaleMetres(raw) {
+      if (!(raw > 0)) return 1;
+      const exp = Math.floor(Math.log10(raw));
+      const base = Math.pow(10, exp);
+      const fraction = raw / base;
+      const niceFraction = fraction < 1.5 ? 1 : fraction < 3.5 ? 2 : fraction < 7.5 ? 5 : 10;
+      return niceFraction * base;
+    }
+
+    // Bottom-left scale bar — a fixed-position (screen-space) ruler segment
+    // reflecting the current zoom level, so distances in the plan can be
+    // read at a glance regardless of how far in/out the user has panned/zoomed.
+    function drawScaleBar() {
+      const wrap = canvas.parentElement;
+      const h = wrap.clientHeight;
+      const targetPx = 90;
+      const metres = niceScaleMetres(targetPx / view.scale);
+      const px = metres * view.scale;
+      const x0 = 16, y0 = h - 16;
+
+      ctx.strokeStyle = '#1a1a18'; // ink
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0); ctx.lineTo(x0 + px, y0);
+      ctx.moveTo(x0, y0 - 5); ctx.lineTo(x0, y0 + 5);
+      ctx.moveTo(x0 + px, y0 - 5); ctx.lineTo(x0 + px, y0 + 5);
+      ctx.stroke();
+
+      const label = metres >= 1000 ? `${metres / 1000} km` : `${metres} m`;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      const tw = ctx.measureText(label).width;
+      ctx.fillRect(x0 + px / 2 - tw / 2 - 3, y0 - 24, tw + 6, 14);
+      ctx.fillStyle = '#1a1a18';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, x0 + px / 2, y0 - 13);
+      ctx.textAlign = 'left';
+    }
+
+    // Shared by the scroll-wheel handler and the Zoom In/Out toolbar
+    // buttons, so both adjust the scale the same way (clamped 1–200).
+    function applyZoom(factor) {
+      view.scale = Math.max(1, Math.min(200, view.scale * factor));
+      render();
     }
 
     // pan & zoom
@@ -528,14 +579,17 @@
     });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      view.scale = Math.max(1, Math.min(200, view.scale * factor));
-      render();
+      applyZoom(e.deltaY < 0 ? 1.1 : 0.9);
     }, { passive: false });
 
     window.addEventListener('resize', () => render());
 
-    return { render, resetView: (draft) => { view.fittedForId = null; render(draft); } };
+    return {
+      render,
+      resetView: (draft) => { view.fittedForId = null; render(draft); },
+      zoomIn: () => applyZoom(1.2),
+      zoomOut: () => applyZoom(1 / 1.2)
+    };
   }
 
   window.PlanView = { create: createPlanView };

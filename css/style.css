@@ -478,6 +478,24 @@ h2 {
 }
 .three-wrap canvas { display: block; width: 100%; height: 100%; }
 
+/* Scale reference for the 3D viewports: the ground GridHelper drawn in both
+   three3d.js and baypreview3d.js is always sized so each square is ~1m in
+   real-world scale — this just makes that legible, since a literal on-screen
+   ruler (like the 2D plan's scale bar) isn't meaningful under perspective. */
+.scale-chip {
+  position: absolute;
+  left: var(--sp-3);
+  bottom: var(--sp-3);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--ink-secondary);
+  pointer-events: none;
+  z-index: 1;
+}
+
 .split-preview-col .three-wrap {
   height: calc((100vh - 230px) * 0.75);
   min-height: 300px;

@@ -211,4 +211,32 @@ function render(tpl) {
   resizeRenderer();
 }
 
-window.BayPreview3D = { render };
+// Manual zoom (toolbar buttons, alternative to scroll-to-zoom) — moves the
+// camera toward/away from its current orbit target. factor < 1 zooms in.
+function zoomBy(factor) {
+  if (!camera || !controls) return;
+  const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+  offset.multiplyScalar(factor);
+  camera.position.copy(controls.target).add(offset);
+  controls.update();
+}
+function zoomIn() { zoomBy(1 / 1.25); }
+function zoomOut() { zoomBy(1.25); }
+
+// Manual orbit (toolbar buttons, alternative to drag-to-orbit) — rotates
+// the camera around its target by a fixed angle step, keeping its distance
+// and height above the target unchanged.
+const ROTATE_STEP = Math.PI / 12; // 15°
+function rotateBy(azimuthDelta) {
+  if (!camera || !controls) return;
+  const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+  const spherical = new THREE.Spherical().setFromVector3(offset);
+  spherical.theta += azimuthDelta;
+  offset.setFromSpherical(spherical);
+  camera.position.copy(controls.target).add(offset);
+  controls.update();
+}
+function rotateLeft() { rotateBy(ROTATE_STEP); }
+function rotateRight() { rotateBy(-ROTATE_STEP); }
+
+window.BayPreview3D = { render, zoomIn, zoomOut, rotateLeft, rotateRight };

@@ -152,6 +152,8 @@
             <div class="split-main-col">
               <div class="split-preview-col">
                 <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnZoomOutZonesPlan" class="btn btn-ghost">Zoom Out</button>
+                  <button type="button" id="btnZoomInZonesPlan" class="btn btn-ghost">Zoom In</button>
                   <button type="button" id="btnFitZonesPlan" class="btn btn-ghost">Fit to View</button>
                 </div>
                 <div class="canvas-wrap">
@@ -232,6 +234,8 @@
             <div class="split-main-col">
               <div class="split-preview-col">
                 <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnZoomOutDoorsPlan" class="btn btn-ghost">Zoom Out</button>
+                  <button type="button" id="btnZoomInDoorsPlan" class="btn btn-ghost">Zoom In</button>
                   <button type="button" id="btnFitDoorsPlan" class="btn btn-ghost">Fit to View</button>
                 </div>
                 <div class="canvas-wrap">
@@ -289,9 +293,15 @@
           <div class="split-main-col">
             <div class="split-preview-col">
               <div class="canvas-toolbar canvas-toolbar-right">
+                <button type="button" id="btnBayRotateLeft" class="btn btn-ghost">Rotate Left</button>
+                <button type="button" id="btnBayRotateRight" class="btn btn-ghost">Rotate Right</button>
+                <button type="button" id="btnBayZoomOut" class="btn btn-ghost">Zoom Out</button>
+                <button type="button" id="btnBayZoomIn" class="btn btn-ghost">Zoom In</button>
                 <button type="button" id="btnFitBayPreview" class="btn btn-ghost">Fit to View</button>
               </div>
-              <div id="bayPreviewContainer" class="three-wrap"></div>
+              <div id="bayPreviewContainer" class="three-wrap">
+                <span class="scale-chip">Grid = 1 m</span>
+              </div>
             </div>
 
             <div class="table-wrap">
@@ -376,6 +386,8 @@
             <div class="split-main-col">
               <div class="split-preview-col">
                 <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnZoomOutRacksPlan" class="btn btn-ghost">Zoom Out</button>
+                  <button type="button" id="btnZoomInRacksPlan" class="btn btn-ghost">Zoom In</button>
                   <button type="button" id="btnFitRacksPlan" class="btn btn-ghost">Fit to View</button>
                 </div>
                 <div class="canvas-wrap">
@@ -459,7 +471,11 @@
         <h2>2D Plan View</h2>
         <div class="canvas-toolbar">
           <span id="planLegend" class="legend"></span>
-          <button type="button" id="btnFitPlan" class="btn btn-ghost">Fit to View</button>
+          <div>
+            <button type="button" id="btnZoomOutPlan" class="btn btn-ghost">Zoom Out</button>
+            <button type="button" id="btnZoomInPlan" class="btn btn-ghost">Zoom In</button>
+            <button type="button" id="btnFitPlan" class="btn btn-ghost">Fit to View</button>
+          </div>
         </div>
         <div class="canvas-wrap">
           <canvas id="canvas2d"></canvas>
@@ -471,12 +487,18 @@
         <h2>Dynamic Spatial Model (3D)</h2>
         <p class="hint">Drag to orbit, scroll to zoom, right-click drag to pan.</p>
         <div class="canvas-toolbar canvas-toolbar-right">
+          <button type="button" id="btnView3dRotateLeft" class="btn btn-ghost">Rotate Left</button>
+          <button type="button" id="btnView3dRotateRight" class="btn btn-ghost">Rotate Right</button>
+          <button type="button" id="btnView3dZoomOut" class="btn btn-ghost">Zoom Out</button>
+          <button type="button" id="btnView3dZoomIn" class="btn btn-ghost">Zoom In</button>
           <button type="button" id="btnView3dReset" class="btn btn-ghost">Reset View</button>
           <button type="button" id="btnView3dTop" class="btn btn-ghost">Top View</button>
           <button type="button" id="btnView3dIso" class="btn btn-ghost">Isometric View</button>
           <button type="button" id="btnToggleLabels" class="btn btn-ghost">Hide Labels</button>
         </div>
-        <div id="threeContainer" class="three-wrap"></div>
+        <div id="threeContainer" class="three-wrap">
+          <span class="scale-chip">Grid = 1 m</span>
+        </div>
       </section>
 
     </main>
