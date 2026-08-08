@@ -112,6 +112,20 @@ function labelsAreVisible() {
   return labelsVisible;
 }
 
+// Adds one diagonal cross-brace between (x, y0, z0) and (x, y1, z1) — a thin
+// box stretched and rotated to span the two points, mirroring the diagonal
+// bracing real pallet-rack frames use between their front and back posts.
+function addDiagonalBrace(parent, mat, x, y0, z0, y1, z1, w) {
+  const dy = y1 - y0, dz = z1 - z0;
+  const len = Math.sqrt(dy * dy + dz * dz);
+  if (len < 0.02) return;
+  const geo = new THREE.BoxGeometry(w, len, w * 0.5);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = Math.atan2(dz, dy);
+  mesh.position.set(x, (y0 + y1) / 2, (z0 + z1) / 2);
+  parent.add(mesh);
+}
+
 function clearGroup() {
   labelSprites = []; // every sprite in here belongs to an object about to be disposed below
   while (group.children.length) {
@@ -284,10 +298,12 @@ function buildDoors(doors, wh) {
 }
 
 function buildRacks(racks, store) {
-  // Standard pallet-racking colors: blue upright frames, orange load beams.
+  // Standard pallet-racking colors: blue upright frames, orange load beams,
+  // steel-gray solid shelf decks (loose-stock levels).
   const uprightMat = new THREE.MeshStandardMaterial({ color: 0x1F4E96, metalness: 0.35, roughness: 0.45 });
   const beamMat = new THREE.MeshStandardMaterial({ color: 0xE8630A, metalness: 0.25, roughness: 0.5 });
   const braceMat = new THREE.MeshStandardMaterial({ color: 0x2E5AA8, metalness: 0.3, roughness: 0.5 });
+  const shelfMat = new THREE.MeshStandardMaterial({ color: 0x9BA3AE, metalness: 0.2, roughness: 0.65 });
 
   racks.forEach((rack) => {
     const tpl = store.getRackTemplate(rack);
@@ -305,10 +321,28 @@ function buildRacks(racks, store) {
 
     const rackGroup = new THREE.Group();
 
+    // Computed up front so the frame-side bracing (below) can tie its
+    // horizontal ties/diagonals to real level elevations, not just a fixed
+    // low/high pair. Level elevations account for the "ground level" option
+    // (bottom level resting on the floor with no beam) and each level's own
+    // independently-configured clear height (not a single uniform spacing
+    // across every level).
+    const levelElevations = window.WarehouseModel.computeLevelElevations(tpl);
+
+    // Frame-side bracing elevations: floor, each level's base, and the top
+    // of the uprights — deduplicated and clamped to the frame's actual height.
+    const braceElevations = [...new Set([0, ...levelElevations.map((lv) => lv.bottomY), tpl.upright.height])]
+      .sort((a, b) => a - b)
+      .map((mm) => mm / 1000)
+      .filter((y) => y >= 0 && y <= uH);
+
     // Each frame position gets two independent posts — one at the front
-    // face, one at the back face — tied together by two horizontal braces,
-    // rather than a single box spanning the whole rack depth.
+    // face, one at the back face — tied together by horizontal ties at
+    // every brace elevation plus zig-zagging diagonal braces between them,
+    // rather than a single box spanning the whole rack depth or just two
+    // fixed ties.
     const tieGeo = new THREE.BoxGeometry(uW * 0.5, 0.04, Math.max(uD - uT, 0.01));
+    const frontZ = uT / 2, backZ = uD - uT / 2;
     for (let i = 0; i < uprightCount; i++) {
       const localX = i * (spacing + uW) + uW / 2;
       const postGeo = new THREE.BoxGeometry(uW, uH, uT);
@@ -321,33 +355,45 @@ function buildRacks(racks, store) {
       back.position.set(localX, uH / 2, uD - uT / 2);
       rackGroup.add(back);
 
-      const braceLow = new THREE.Mesh(tieGeo, braceMat);
-      braceLow.position.set(localX, Math.min(0.15, uH * 0.1), uD / 2);
-      rackGroup.add(braceLow);
+      braceElevations.forEach((y) => {
+        const tie = new THREE.Mesh(tieGeo.clone(), braceMat);
+        tie.position.set(localX, y, uD / 2);
+        rackGroup.add(tie);
+      });
 
-      const braceHigh = new THREE.Mesh(tieGeo.clone(), braceMat);
-      braceHigh.position.set(localX, uH - Math.min(0.15, uH * 0.1), uD / 2);
-      rackGroup.add(braceHigh);
+      for (let s = 0; s < braceElevations.length - 1; s++) {
+        const y0 = braceElevations[s], y1 = braceElevations[s + 1];
+        if (y1 - y0 < 0.05) continue; // segment too short to bother bracing
+        const z0 = s % 2 === 0 ? frontZ : backZ;
+        const z1 = s % 2 === 0 ? backZ : frontZ;
+        addDiagonalBrace(rackGroup, braceMat, localX, y0, z0, y1, z1, uW * 0.15);
+      }
     }
 
-    // beams per level, front (z=bT/2) and back (z=uD-bT/2). Level elevations
-    // account for the "ground level" option (bottom level resting on the
-    // floor with no beam) and each level's own independently-configured
-    // clear height (not a single uniform spacing across every level).
-    const levelElevations = window.WarehouseModel.computeLevelElevations(tpl);
+    // Per level: pallet levels get open front/back load beams (pallets rest
+    // on the two edges, nothing in between); shelf levels get one
+    // continuous solid deck across the full depth, since loose stock/
+    // cartons need a full supporting surface rather than two edge rails.
     levelElevations.forEach((lv) => {
       if (!lv.hasBeam) return; // floor-resting bottom level — nothing to draw
       const levelY = lv.bottomY / 1000;
       if (levelY > uH) return;
       for (let b = 0; b < bayCount; b++) {
         const startX = b * (spacing + uW) + uW;
-        const beamGeo = new THREE.BoxGeometry(spacing, bH, bT);
-        const front = new THREE.Mesh(beamGeo, beamMat);
-        front.position.set(startX + spacing / 2, levelY + bH / 2, bT / 2);
-        rackGroup.add(front);
-        const back = new THREE.Mesh(beamGeo.clone(), beamMat);
-        back.position.set(startX + spacing / 2, levelY + bH / 2, uD - bT / 2);
-        rackGroup.add(back);
+        if (lv.levelType === 'shelf') {
+          const shelfGeo = new THREE.BoxGeometry(spacing, bH, uD);
+          const shelf = new THREE.Mesh(shelfGeo, shelfMat);
+          shelf.position.set(startX + spacing / 2, levelY + bH / 2, uD / 2);
+          rackGroup.add(shelf);
+        } else {
+          const beamGeo = new THREE.BoxGeometry(spacing, bH, bT);
+          const front = new THREE.Mesh(beamGeo, beamMat);
+          front.position.set(startX + spacing / 2, levelY + bH / 2, bT / 2);
+          rackGroup.add(front);
+          const back = new THREE.Mesh(beamGeo.clone(), beamMat);
+          back.position.set(startX + spacing / 2, levelY + bH / 2, uD - bT / 2);
+          rackGroup.add(back);
+        }
       }
     });
 

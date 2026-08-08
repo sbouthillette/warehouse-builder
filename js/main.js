@@ -879,6 +879,10 @@
         <td>${i === 0 ? `<input type="checkbox" class="lvGround" ${lv.restsOnFloor ? 'checked' : ''} />` : '—'}</td>
         <td><input type="number" class="lvHeight" min="0" step="1" value="${lv.clearHeight}" ${grounded ? 'disabled' : ''}
           title="${i === 0 ? "Height above the floor to this level's beam (mm)" : 'Clear opening above the beam below (mm)'}" /></td>
+        <td><select class="lvType" title="Pallet: open front/back load beams only. Shelf: a continuous deck across the full depth, for loose stock or cartons.">
+          <option value="pallet" ${lv.levelType === 'pallet' ? 'selected' : ''}>Pallet</option>
+          <option value="shelf" ${lv.levelType === 'shelf' ? 'selected' : ''}>Shelf (loose stock)</option>
+        </select></td>
         <td><input type="number" class="lvLocations" min="1" step="1" value="${lv.locations}"
           title="How many discrete pick/pallet locations span this level (1 = single unlabeled, 2 = A/B, etc.)" /></td>`;
       tbody.appendChild(tr);
@@ -891,6 +895,10 @@
       }
       tr.querySelector('.lvHeight').addEventListener('input', (e) => {
         lv.clearHeight = Number(e.target.value) || 0;
+        renderBayPreview();
+      });
+      tr.querySelector('.lvType').addEventListener('change', (e) => {
+        lv.levelType = e.target.value === 'shelf' ? 'shelf' : 'pallet';
         renderBayPreview();
       });
       tr.querySelector('.lvLocations').addEventListener('input', (e) => {

@@ -342,12 +342,18 @@ function generateLocationLabels(count) {
 //   locations — how many discrete pick/pallet locations span this level's
 //     width (e.g. 2 for "A"/"B" pallet positions, 5-6 for small-item
 //     picking shelves); always >= 1.
+//   levelType — 'pallet' (default, matches all pre-existing data): open
+//     front/back load beams only, nothing spanning the middle — pallets sit
+//     on the beam edges. 'shelf': a continuous solid deck across the full
+//     depth, for loose stock/cartons that aren't palletized and need a
+//     full supporting surface rather than two edge rails.
 function normalizeBayLevel(lv, index) {
   return {
     id: (lv && lv.id) || uid('level'),
     clearHeight: Number(lv && lv.clearHeight) || (index === 0 ? 150 : 1600),
     restsOnFloor: index === 0 ? !!(lv && lv.restsOnFloor) : false,
-    locations: Math.max(1, Math.round(Number(lv && lv.locations)) || 1)
+    locations: Math.max(1, Math.round(Number(lv && lv.locations)) || 1),
+    levelType: (lv && lv.levelType === 'shelf') ? 'shelf' : 'pallet'
   };
 }
 
@@ -375,7 +381,8 @@ function normalizeBayTemplate(t) {
         id: uid('level'),
         clearHeight: i === 0 ? (Number(old.baseHeight) || 0) : (Number(old.spacing) || 0),
         restsOnFloor: i === 0 ? !!old.groundLevel : false,
-        locations: 1
+        locations: 1,
+        levelType: 'pallet' // matches pre-upgrade rendering exactly
       });
     }
     t.levels = levels;
@@ -388,9 +395,9 @@ function normalizeBayTemplate(t) {
 // Computes the elevation (mm, above the floor) of each level's beam in a bay
 // template, from its per-level `clearHeight`/`restsOnFloor`/`locations`
 // (see normalizeBayLevel above). Returns one entry per level:
-//   { index, bottomY, topY, hasBeam, locations } — bottomY/topY in mm above
-//   the floor; hasBeam is false only for a floor-resting bottom level (no
-//   beam mesh).
+//   { index, bottomY, topY, hasBeam, locations, levelType } — bottomY/topY
+//   in mm above the floor; hasBeam is false only for a floor-resting bottom
+//   level (no beam/shelf mesh); levelType is 'pallet' or 'shelf'.
 function computeLevelElevations(tpl) {
   const levels = Array.isArray(tpl.levels) ? tpl.levels : [];
   const bH = Number(tpl.beam.height) || 0;
@@ -399,15 +406,16 @@ function computeLevelElevations(tpl) {
   let prevTop = 0; // top face of the previous support; the floor starts at 0
   levels.forEach((lv, i) => {
     const locations = Math.max(1, Math.round(Number(lv.locations)) || 1);
+    const levelType = lv.levelType === 'shelf' ? 'shelf' : 'pallet';
     if (i === 0 && lv.restsOnFloor) {
-      out.push({ index: i, bottomY: 0, topY: 0, hasBeam: false, locations });
+      out.push({ index: i, bottomY: 0, topY: 0, hasBeam: false, locations, levelType });
       prevTop = 0;
       return;
     }
     const clear = Number(lv.clearHeight) || 0;
     const bottomY = i === 0 ? clear : prevTop + clear;
     const topY = bottomY + bH;
-    out.push({ index: i, bottomY, topY, hasBeam: true, locations });
+    out.push({ index: i, bottomY, topY, hasBeam: true, locations, levelType });
     prevTop = topY;
   });
   return out;
