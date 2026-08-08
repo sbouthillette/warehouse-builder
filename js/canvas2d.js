@@ -326,6 +326,23 @@
         ctx.fillText('Outside warehouse shell', x + pw / 2, y - 6);
         ctx.textAlign = 'left';
       }
+
+      drawOriginDot(draft.x, draft.y);
+    }
+
+    // Marks a rack's origin — the (x, y) corner the form's X/Y fields refer
+    // to, i.e. the low-X/low-Y corner of its footprint before rotation is
+    // applied — with a large red dot, so it's unambiguous which corner moves
+    // when the user edits X/Y, independent of rotation or picking side.
+    function drawOriginDot(x, y) {
+      const p = worldToScreen(x, y);
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#C0392B';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
 
     function drawRacks(racks, store) {
@@ -405,6 +422,7 @@
           x: r.x, y: r.y, rotation: r.rotation, lengthM, depthM, pickingSide: r.pickingSide
         });
         drawPickingIndicator(edge);
+        drawOriginDot(r.x, r.y);
       });
     }
 

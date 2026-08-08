@@ -1095,6 +1095,16 @@
   rackBayCountInput.addEventListener('input', syncBaySlotsToCount);
   renderBaySlotsTable();
 
+  // Flips which end of the rack "Bay 1" starts from — reverses the array
+  // order (each slot keeps its own label/pallet count, they just swap ends),
+  // so row #1 in the table always matches whichever bay now sits nearest the
+  // origin dot in the plan preview.
+  document.getElementById('btnReverseBayOrder').addEventListener('click', () => {
+    draftBays.reverse();
+    renderBaySlotsTable();
+    renderRacksPlanPreview();
+  });
+
   // True if a rack with this footprint sits entirely inside the warehouse
   // shell — used both for the live draft preview (red highlight) and to
   // hard-block Add/Update Rack.
