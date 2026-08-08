@@ -1294,6 +1294,12 @@
   document.getElementById('btnView3dIso').addEventListener('click', () => {
     if (window.ThreeView) window.ThreeView.isometricView(store);
   });
+  document.getElementById('btnToggleLabels').addEventListener('click', () => {
+    if (!window.ThreeView) return;
+    const next = !window.ThreeView.labelsAreVisible();
+    window.ThreeView.setLabelsVisible(next);
+    document.getElementById('btnToggleLabels').textContent = next ? 'Hide Labels' : 'Show Labels';
+  });
 
   // ---------------- helpers ----------------
   function escapeHtml(s) {

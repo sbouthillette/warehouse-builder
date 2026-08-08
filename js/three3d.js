@@ -73,6 +73,14 @@ function animate() {
   if (renderer && scene && camera) renderer.render(scene, camera);
 }
 
+// Every text label (rack names, per-bay/per-location tags, zone/obstacle
+// names, door names) is created through this one factory, so tracking every
+// sprite it hands out here — and applying the current show/hide state to
+// each new one — is enough to drive a single global "toggle labels" button
+// without touching every individual build*() call site.
+let labelsVisible = true;
+let labelSprites = [];
+
 function makeTextSprite(text) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -88,10 +96,24 @@ function makeTextSprite(text) {
   const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
   const sprite = new THREE.Sprite(mat);
   sprite.scale.set(4, 1, 1);
+  sprite.visible = labelsVisible;
+  labelSprites.push(sprite);
   return sprite;
 }
 
+// Applies (or flips) the show/hide state to every label sprite created so
+// far, and remembers it for labels created by future render() calls too.
+function setLabelsVisible(visible) {
+  labelsVisible = !!visible;
+  labelSprites.forEach((s) => { s.visible = labelsVisible; });
+}
+
+function labelsAreVisible() {
+  return labelsVisible;
+}
+
 function clearGroup() {
+  labelSprites = []; // every sprite in here belongs to an object about to be disposed below
   while (group.children.length) {
     const obj = group.children.pop();
     if (obj.geometry) obj.geometry.dispose();
@@ -448,4 +470,4 @@ function render(store) {
   resetView(store);
 }
 
-window.ThreeView = { render, resetView, topView, isometricView };
+window.ThreeView = { render, resetView, topView, isometricView, setLabelsVisible, labelsAreVisible };
