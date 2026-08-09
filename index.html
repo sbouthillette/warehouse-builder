@@ -491,7 +491,7 @@
       <!-- TAB 6: 3D VIEW -->
       <section id="tab-view3d" class="tab-panel">
         <h2>Dynamic Spatial Model (3D)</h2>
-        <p class="hint">Drag to orbit, scroll to zoom, right-click drag to pan.</p>
+        <p class="hint">Drag to orbit, scroll to zoom, right-click drag to pan. Click an occupied location's box to see what's stored there.</p>
         <div class="canvas-toolbar canvas-toolbar-right">
           <button type="button" id="btnView3dRotateLeft" class="btn btn-ghost">Rotate Left</button>
           <button type="button" id="btnView3dRotateRight" class="btn btn-ghost">Rotate Right</button>
@@ -504,6 +504,7 @@
         </div>
         <div id="threeContainer" class="three-wrap">
           <span class="scale-chip">Grid = 1 m</span>
+          <div id="inventoryInfoPanel" class="info-panel" hidden></div>
         </div>
       </section>
 

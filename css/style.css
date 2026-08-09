@@ -512,6 +512,48 @@ h2 {
   z-index: 1;
 }
 
+/* Click-to-inspect popup (Dynamic Spatial Model tab) — shows what's stored
+   in an occupancy box (Inventory tab) when it's clicked. */
+.info-panel {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  min-width: 200px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+.info-panel-close {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-secondary);
+}
+.info-panel-close:hover { color: var(--ink); }
+.info-panel-title {
+  font-weight: 700;
+  margin-bottom: var(--sp-2);
+  padding-right: var(--sp-4);
+  color: var(--ink);
+}
+.info-panel-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 2px 0;
+  color: var(--ink-secondary);
+}
+.info-panel-row span:last-child { color: var(--ink); font-weight: 500; }
+
 .split-preview-col .three-wrap {
   height: calc((100vh - 230px) * 0.75);
   min-height: 300px;

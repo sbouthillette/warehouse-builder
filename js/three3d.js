@@ -10,9 +10,59 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const container = document.getElementById('threeContainer');
+const infoPanel = document.getElementById('inventoryInfoPanel');
 
 let renderer, scene, camera, controls, group;
 let ready = false;
+
+// Every occupancy box (Inventory tab) built this render — the click handler
+// raycasts against just these, not the whole scene, so clicking a beam or
+// upright doesn't do anything. Rebuilt from scratch each render(); see
+// clearGroup() below.
+let inventoryBoxes = [];
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+
+function escapeHtmlLocal(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function showInventoryInfo(inv) {
+  if (!infoPanel) return;
+  infoPanel.innerHTML = `
+    <button type="button" class="info-panel-close" aria-label="Close">×</button>
+    <div class="info-panel-title">${escapeHtmlLocal(inv.partNumber)}</div>
+    <div class="info-panel-row"><span>Location</span><span>${escapeHtmlLocal(inv.code)}</span></div>
+    <div class="info-panel-row"><span>Rack</span><span>${escapeHtmlLocal(inv.rackName)}</span></div>
+    <div class="info-panel-row"><span>Bay</span><span>${escapeHtmlLocal(inv.bayLabel)}</span></div>
+    <div class="info-panel-row"><span>Level</span><span>${escapeHtmlLocal(inv.levelNumber)}</span></div>
+    <div class="info-panel-row"><span>Position</span><span>${escapeHtmlLocal(inv.locationLabel)}</span></div>
+    <div class="info-panel-row"><span>Quantity</span><span>${escapeHtmlLocal(inv.quantity)}</span></div>
+  `;
+  infoPanel.hidden = false;
+  infoPanel.querySelector('.info-panel-close').addEventListener('click', hideInventoryInfo);
+}
+
+function hideInventoryInfo() {
+  if (infoPanel) infoPanel.hidden = true;
+}
+
+// Click-to-inspect: raycasts from the click point through the camera against
+// only the occupancy boxes, so clicking a box shows what's stored there.
+// Clicking empty space (or a beam/upright/etc.) dismisses the panel.
+function onCanvasClick(event) {
+  if (!camera || !renderer || !inventoryBoxes.length) { hideInventoryInfo(); return; }
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNdc, camera);
+  const hits = raycaster.intersectObjects(inventoryBoxes, false);
+  if (hits.length && hits[0].object.userData.inventory) {
+    showInventoryInfo(hits[0].object.userData.inventory);
+  } else {
+    hideInventoryInfo();
+  }
+}
 
 function init() {
   if (!container) return;
@@ -31,6 +81,8 @@ function init() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
+
+  renderer.domElement.addEventListener('click', onCanvasClick);
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.55);
   scene.add(ambient);
@@ -128,6 +180,8 @@ function addDiagonalBrace(parent, mat, x, y0, z0, y1, z1, w) {
 
 function clearGroup() {
   labelSprites = []; // every sprite in here belongs to an object about to be disposed below
+  inventoryBoxes = []; // same — cleared before the meshes they reference are gone
+  hideInventoryInfo(); // whatever was clicked no longer exists once we rebuild
   while (group.children.length) {
     const obj = group.children.pop();
     if (obj.geometry) obj.geometry.dispose();
@@ -297,6 +351,11 @@ function buildDoors(doors, wh) {
   });
 }
 
+// A typical loaded pallet (pallet + goods) — used as the occupancy box's
+// height so it looks like a real unit load rather than stretching to fill
+// whatever headroom a level happens to have.
+const PALLET_LOAD_HEIGHT_M = 1.2;
+
 function buildRacks(racks, store) {
   // Standard pallet-racking colors: blue upright frames, orange load beams,
   // steel-gray solid shelf decks (loose-stock levels), tan occupancy boxes
@@ -450,10 +509,17 @@ function buildRacks(racks, store) {
             if (!inv) return;
             const segCenter = startX + (spacing * (k + 0.5)) / locLabels.length;
             const cellW = (spacing / locLabels.length) * 0.85;
-            const cellH = Math.max((openTop - openBottom) * 0.85, 0.05);
+            // A standard loaded pallet, not "however much headroom this
+            // level happens to have" — the top level's opening runs all the
+            // way up to the top of the uprights, so sizing off the opening
+            // stretched top-shelf boxes absurdly tall. Only shrink below the
+            // standard height if the level itself is genuinely too short.
+            const cellH = Math.min(PALLET_LOAD_HEIGHT_M, Math.max((openTop - openBottom) * 0.92, 0.05));
             const cellD = uD * 0.85;
             const box = new THREE.Mesh(new THREE.BoxGeometry(cellW, cellH, cellD), occupiedMat);
             box.position.set(segCenter, openBottom + cellH / 2 + 0.02, uD / 2);
+            box.userData.inventory = inv;
+            inventoryBoxes.push(box);
             rackGroup.add(box);
 
             const partTag = makeTextSprite(inv.partNumber);
