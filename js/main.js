@@ -31,9 +31,8 @@
       renderWallOptions();
       if (window.DoorsPlanView) window.DoorsPlanView.resetView({ door: getDraftDoor() });
     }
-    if (tab === 'zones') { // function declarations below are hoisted within this closure
-      if (window.ZonesPlanView) window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
-      if (window.WallsPlanView) window.WallsPlanView.resetView({ wall: getDraftWall() });
+    if (tab === 'zones' && window.ZonesPlanView) { // function declaration below is hoisted within this closure
+      window.ZonesPlanView.resetView(zonesPlanDraftPayload());
     }
     if (tab === 'racks' && window.RacksPlanView) { // function declaration below is hoisted within this closure
       window.RacksPlanView.resetView({ rack: getDraftRack() });
@@ -204,7 +203,7 @@
       col.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = locked; });
     });
     document.querySelectorAll(
-      '#zonesTable .icon-btn, #wallsTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
+      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
       '#inventoryTable .icon-btn, #itemsTable .icon-btn, #locationBarcodesTable .icon-btn'
     ).forEach((el) => { el.disabled = locked; });
     // Location Barcodes table lives directly on the Inventory tab (not
@@ -518,7 +517,14 @@
     });
   });
 
-  // ---------------- Tab 2: Zones & Obstacles ----------------
+  // ---------------- Tab 2: Zones, Obstacles & Walls ----------------
+  // All three record types (flat zones, raised obstacles, interior walls)
+  // share one form and one plan preview/table — the Kind select decides
+  // which shape the rest of the form represents at any moment, and which
+  // Store methods (addZone/updateZone vs addWall/updateWall) get called on
+  // submit. editingZoneId and editingWallId are mutually exclusive — loading
+  // one into the form always clears the other, so the submit handler can
+  // tell unambiguously what's being edited.
   const formZone = document.getElementById('formZone');
   const zoneKindSelect = document.getElementById('zoneKind');
   const zoneShapeSelect = document.getElementById('zoneShape');
@@ -534,35 +540,70 @@
     select.innerHTML = options.map((o) => `<option${o === selected ? ' selected' : ''}>${o}</option>`).join('');
   }
 
-  // Obstacles are raised (need a height) and use a different type vocabulary
-  // than flat zones — swap the form to match whichever Kind is selected.
-  // Only obstacles may be round; switching back to Zone forces shape='rect'.
+  // Swaps the form to match whichever Kind is selected: Obstacles are
+  // raised (need a height) and use a different type vocabulary than flat
+  // Zones; Walls replace the type/width/length/color fields entirely with
+  // an end point and a thickness, and reuse the X/Y fields as a start point
+  // instead of an offset. Only obstacles may be round; switching away from
+  // Obstacle forces shape='rect'.
   function updateZoneKindUI() {
     const kind = zoneKindSelect.value;
-    document.getElementById('zoneHeightLabel').hidden = kind !== 'obstacle';
-    document.getElementById('zoneHeight').required = kind === 'obstacle';
-    document.getElementById('zoneShapeLabel').hidden = kind !== 'obstacle';
-    if (kind !== 'obstacle') zoneShapeSelect.value = 'rect';
-    const noun = kind === 'obstacle' ? 'Obstacle' : 'Zone';
-    formZone.querySelector('button[type=submit]').textContent = editingZoneId ? `Update ${noun}` : `Add ${noun}`;
+    const isWall = kind === 'wall';
+    const isObstacle = kind === 'obstacle';
+
+    document.getElementById('zoneNameLabelText').textContent =
+      isWall ? 'Wall Name' : (isObstacle ? 'Obstacle Name' : 'Zone Name');
+
+    document.getElementById('zoneTypeLabel').hidden = isWall;
+    document.getElementById('zoneType').required = !isWall;
+
+    document.getElementById('zoneShapeLabel').hidden = !isObstacle;
+    if (!isObstacle) zoneShapeSelect.value = 'rect';
+
+    document.getElementById('zoneXLabelText').textContent = isWall ? 'Start X (m)' : 'X offset (m)';
+    document.getElementById('zoneYLabelText').textContent = isWall ? 'Start Y (m)' : 'Y offset (m)';
+
+    document.getElementById('zoneWidthLabel').hidden = isWall;
+    document.getElementById('zoneWidth').required = !isWall;
+
+    document.getElementById('wallEndXLabel').hidden = !isWall;
+    document.getElementById('wallEndX').required = isWall;
+    document.getElementById('wallEndYLabel').hidden = !isWall;
+    document.getElementById('wallEndY').required = isWall;
+    document.getElementById('wallThicknessLabel').hidden = !isWall;
+    document.getElementById('wallThicknessField').required = isWall;
+
+    document.getElementById('zoneHeightLabel').hidden = kind === 'zone';
+    document.getElementById('zoneHeight').required = kind !== 'zone';
+    document.getElementById('zoneHeightLabelText').textContent = isWall ? 'Height (m)' : 'Height (m) — how tall it stands';
+
+    document.getElementById('zoneColorLabel').hidden = isWall;
+
+    const noun = isWall ? 'Wall' : (isObstacle ? 'Obstacle' : 'Zone');
+    const editing = isWall ? editingWallId : editingZoneId;
+    formZone.querySelector('button[type=submit]').textContent = editing ? `Update ${noun}` : `Add ${noun}`;
     updateZoneShapeUI();
   }
 
   // A round obstacle (e.g. a column) is defined by a single diameter — swap
   // the Width field's label to "Diameter" and hide the Length field, which
-  // stays in sync with Width behind the scenes (see getDraftZoneOrObstacle
-  // and Store._normalizeZonePayload).
+  // stays in sync with Width behind the scenes (see getDraftShape and
+  // Store._normalizeZonePayload). Length also stays hidden for Wall, which
+  // doesn't use it at all (see updateZoneKindUI above).
   function updateZoneShapeUI() {
-    const isRound = zoneKindSelect.value === 'obstacle' && zoneShapeSelect.value === 'round';
+    const kind = zoneKindSelect.value;
+    const isWall = kind === 'wall';
+    const isRound = kind === 'obstacle' && zoneShapeSelect.value === 'round';
     document.getElementById('zoneWidthLabelText').textContent = isRound ? 'Diameter (m)' : 'Width — X axis (m)';
-    document.getElementById('zoneLengthLabel').hidden = isRound;
-    document.getElementById('zoneLength').required = !isRound;
+    document.getElementById('zoneLengthLabel').hidden = isWall || isRound;
+    document.getElementById('zoneLength').required = !isWall && !isRound;
   }
 
   zoneKindSelect.addEventListener('change', () => {
     const kind = zoneKindSelect.value;
     populateZoneTypeOptions(kind);
     document.getElementById('zoneColor').value = kind === 'obstacle' ? '#5f5e5a' : '#BC5C92';
+    document.getElementById('zoneHeight').value = kind === 'wall' ? ((store.data.warehouse && store.data.warehouse.height) || 3) : 2;
     updateZoneKindUI();
     renderZonesPlanPreview();
   });
@@ -581,12 +622,38 @@
     return Model.zoneFullyInsidePolygon(z, wh.shape);
   }
 
-  function getDraftZoneOrObstacle() {
+  // True if this wall's centerline sits entirely within the warehouse shell
+  // — used for both the live draft preview (red highlight) and to hard-block
+  // Add/Update. Mirrors isZoneFootprintValid's role for zones/obstacles.
+  function isWallValid(w) {
+    const wh = store.data.warehouse;
+    if (!wh || !wh.shape || wh.shape.length < 3) return false;
+    return Model.wallFullyInsidePolygon(w, wh.shape);
+  }
+
+  // Reads the current (unsaved) form values into a plain zone/obstacle- or
+  // wall-shaped draft, tagged with which one it is — the Kind select
+  // decides which shape the rest of the form currently represents. Used for
+  // both the live plan-preview highlight and (rebuilt from raw field values
+  // again) the Add/Update submit handler.
+  function getDraftShape() {
+    const kind = zoneKindSelect.value;
+    if (kind === 'wall') {
+      const draft = {
+        x1: Number(document.getElementById('zoneX').value) || 0,
+        y1: Number(document.getElementById('zoneY').value) || 0,
+        x2: Number(document.getElementById('wallEndX').value) || 0,
+        y2: Number(document.getElementById('wallEndY').value) || 0,
+        thickness: Number(document.getElementById('wallThicknessField').value) || 0.15,
+        height: Number(document.getElementById('zoneHeight').value) || 3
+      };
+      draft.valid = isWallValid(draft);
+      return { recordType: 'wall', draft };
+    }
     const num = (id, fallback) => {
       const v = Number(document.getElementById(id).value);
       return Number.isFinite(v) && v > 0 ? v : fallback;
     };
-    const kind = zoneKindSelect.value;
     const shape = kind === 'obstacle' && zoneShapeSelect.value === 'round' ? 'round' : 'rect';
     const width = num('zoneWidth', 1);
     const draft = {
@@ -601,14 +668,26 @@
       color: document.getElementById('zoneColor').value
     };
     draft.valid = isZoneFootprintValid(draft);
-    return draft;
+    return { recordType: 'zone', draft };
+  }
+
+  // Wraps getDraftShape's result in the { zone: ... } / { wall: ... } shape
+  // PlanView.render()/resetView() expect — shared by the live-preview
+  // listeners, the toolbar Fit button, and the tab-switch handler in
+  // switchTab() above.
+  function zonesPlanDraftPayload() {
+    const { recordType, draft } = getDraftShape();
+    return recordType === 'wall' ? { wall: draft } : { zone: draft };
   }
 
   function renderZonesPlanPreview() {
-    if (window.ZonesPlanView) window.ZonesPlanView.render({ zone: getDraftZoneOrObstacle() });
+    if (window.ZonesPlanView) window.ZonesPlanView.render(zonesPlanDraftPayload());
   }
 
-  const zoneLiveFields = ['zoneType', 'zoneX', 'zoneY', 'zoneWidth', 'zoneLength', 'zoneHeight', 'zoneColor'];
+  const zoneLiveFields = [
+    'zoneType', 'zoneX', 'zoneY', 'zoneWidth', 'zoneLength', 'zoneHeight', 'zoneColor',
+    'wallEndX', 'wallEndY', 'wallThicknessField'
+  ];
   zoneLiveFields.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', renderZonesPlanPreview);
@@ -618,6 +697,7 @@
   // form into edit mode for it — used by both the name-cell click and the
   // pencil edit button (same pattern as Bay Builder).
   function loadZoneIntoForm(z) {
+    editingWallId = null; // the form now represents a zone/obstacle, not a wall
     zoneKindSelect.value = z.kind;
     zoneShapeSelect.value = z.shape === 'round' ? 'round' : 'rect';
     populateZoneTypeOptions(z.kind, z.type);
@@ -634,8 +714,29 @@
     renderZonesPlanPreview();
   }
 
-  function exitZoneEditMode() {
+  // Populates the form with an existing wall's values and puts the form
+  // into edit mode for it — same pattern as loadZoneIntoForm above, just
+  // targeting the Wall-mode fields.
+  function loadWallIntoForm(w) {
+    editingZoneId = null; // the form now represents a wall, not a zone/obstacle
+    zoneKindSelect.value = 'wall';
+    populateZoneTypeOptions('wall');
+    document.getElementById('zoneName').value = w.name;
+    document.getElementById('zoneX').value = w.x1;
+    document.getElementById('zoneY').value = w.y1;
+    document.getElementById('wallEndX').value = w.x2;
+    document.getElementById('wallEndY').value = w.y2;
+    document.getElementById('wallThicknessField').value = w.thickness;
+    document.getElementById('zoneHeight').value = w.height;
+    editingWallId = w.id;
+    document.getElementById('btnCancelZoneEdit').hidden = false;
+    updateZoneKindUI();
+    renderZonesPlanPreview();
+  }
+
+  function exitEditMode() {
     editingZoneId = null;
+    editingWallId = null;
     document.getElementById('btnCancelZoneEdit').hidden = true;
     updateZoneKindUI();
   }
@@ -647,17 +748,20 @@
     populateZoneTypeOptions('zone');
     document.getElementById('zoneColor').value = '#BC5C92';
     document.getElementById('zoneHeight').value = 2;
+    document.getElementById('wallEndX').value = 5;
+    document.getElementById('wallEndY').value = 0;
+    document.getElementById('wallThicknessField').value = 0.15;
     updateZoneKindUI();
     renderZonesPlanPreview();
   }
 
   document.getElementById('btnCancelZoneEdit').addEventListener('click', () => {
-    exitZoneEditMode();
+    exitEditMode();
     resetZoneForm();
   });
 
   document.getElementById('btnFitZonesPlan').addEventListener('click', () => {
-    if (window.ZonesPlanView) window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
+    if (window.ZonesPlanView) window.ZonesPlanView.resetView(zonesPlanDraftPayload());
   });
   document.getElementById('btnZoomInZonesPlan').addEventListener('click', () => {
     if (window.ZonesPlanView) window.ZonesPlanView.zoomIn();
@@ -671,9 +775,30 @@
 
   formZone.addEventListener('submit', (e) => {
     e.preventDefault();
+    const kind = zoneKindSelect.value;
+    if (kind === 'wall') {
+      const payload = {
+        name: document.getElementById('zoneName').value,
+        x1: document.getElementById('zoneX').value,
+        y1: document.getElementById('zoneY').value,
+        x2: document.getElementById('wallEndX').value,
+        y2: document.getElementById('wallEndY').value,
+        thickness: document.getElementById('wallThicknessField').value,
+        height: document.getElementById('zoneHeight').value
+      };
+      if (!isWallValid(payload)) {
+        alert('This wall falls outside the warehouse shell (or crosses its outline). Adjust its start/end points so the whole wall sits inside before saving.');
+        return;
+      }
+      if (editingWallId) store.updateWall(editingWallId, payload);
+      else store.addWall(payload);
+      exitEditMode();
+      resetZoneForm();
+      return;
+    }
     const payload = {
       name: document.getElementById('zoneName').value,
-      kind: zoneKindSelect.value,
+      kind,
       shape: zoneShapeSelect.value,
       type: document.getElementById('zoneType').value,
       x: document.getElementById('zoneX').value,
@@ -688,22 +813,30 @@
       alert(`This ${noun} falls outside the warehouse shell. Adjust its position or size so it fits entirely within the outline before saving.`);
       return;
     }
-    if (editingZoneId) {
-      store.updateZone(editingZoneId, payload);
-      exitZoneEditMode();
-    } else {
-      store.addZone(payload);
-    }
+    if (editingZoneId) store.updateZone(editingZoneId, payload);
+    else store.addZone(payload);
+    exitEditMode();
     resetZoneForm();
   });
 
   function renderZonesGate() {
     const wh = store.data.warehouse;
     document.getElementById('zonesGate').classList.toggle('show', !wh);
-    document.getElementById('zonesGate').textContent = 'Define the warehouse shell (Tab 1) before adding zones or obstacles.';
+    document.getElementById('zonesGate').textContent = 'Define the warehouse shell (Tab 1) before adding zones, obstacles, or walls.';
     document.getElementById('zonesUI').hidden = !wh;
   }
 
+  // Neutral swatch color for wall rows in the merged table below — matches
+  // the fixed gray used to draw walls in the 2D plan (canvas2d.js WALL_COLOR)
+  // and the 3D view (three3d.js WALL_COLOR_3D), since walls (unlike zones/
+  // obstacles) don't have a user-editable color field.
+  const WALL_TABLE_COLOR = '#5f5e5a';
+
+  // Renders the merged Zones/Obstacles/Walls table — one row per zone or
+  // obstacle (unchanged from before) followed by one row per interior wall.
+  // Both record types share the same click-to-edit / pencil / delete
+  // pattern; only walls skip the Convert button, since converting a line
+  // segment into a rectangle (or vice versa) isn't a meaningful operation.
   function renderZonesTable() {
     const tbody = document.querySelector('#zonesTable tbody');
     tbody.innerHTML = '';
@@ -711,22 +844,42 @@
       const tr = document.createElement('tr');
       tr.dataset.id = z.id;
       tr.innerHTML = `
-        <td class="name-cell" data-act="view" data-id="${z.id}" title="Click to edit"><span class="swatch" style="background:${z.color}"></span>${escapeHtml(z.name)}</td>
+        <td class="name-cell" data-act="view" data-rt="zone" data-id="${z.id}" title="Click to edit"><span class="swatch" style="background:${z.color}"></span>${escapeHtml(z.name)}</td>
         <td>${z.kind === 'obstacle' ? 'Obstacle' : 'Zone'}</td>
-        <td>${z.kind === 'obstacle' ? (z.shape === 'round' ? 'Round' : 'Rectangle') : '—'}</td>
-        <td>${escapeHtml(z.type)}</td>
-        <td>${z.x}</td><td>${z.y}</td><td>${z.width}</td><td>${z.length}</td>
+        <td>${escapeHtml(z.type)}${z.kind === 'obstacle' && z.shape === 'round' ? ' (Round)' : ''}</td>
+        <td>${z.x}, ${z.y}</td>
+        <td>${z.width} × ${z.length} m</td>
         <td>${z.kind === 'obstacle' ? z.height + ' m' : '—'}</td>
         <td>
-          <button class="icon-btn" data-act="convert" data-id="${z.id}" title="Convert to ${z.kind === 'obstacle' ? 'Zone' : 'Obstacle'}">⇄</button>
-          <button class="icon-btn" data-act="edit" data-id="${z.id}" title="Edit">✎</button>
-          <button class="icon-btn" data-act="del" data-id="${z.id}" title="Delete">✕</button>
+          <button class="icon-btn" data-act="convert" data-rt="zone" data-id="${z.id}" title="Convert to ${z.kind === 'obstacle' ? 'Zone' : 'Obstacle'}">⇄</button>
+          <button class="icon-btn" data-act="edit" data-rt="zone" data-id="${z.id}" title="Edit">✎</button>
+          <button class="icon-btn" data-act="del" data-rt="zone" data-id="${z.id}" title="Delete">✕</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    (store.data.walls || []).forEach((w) => {
+      const tr = document.createElement('tr');
+      tr.dataset.id = w.id;
+      tr.innerHTML = `
+        <td class="name-cell" data-act="view" data-rt="wall" data-id="${w.id}" title="Click to edit"><span class="swatch" style="background:${WALL_TABLE_COLOR}"></span>${escapeHtml(w.name)}</td>
+        <td>Wall</td>
+        <td>—</td>
+        <td>(${w.x1}, ${w.y1}) → (${w.x2}, ${w.y2})</td>
+        <td>Thickness ${w.thickness} m</td>
+        <td>${w.height} m</td>
+        <td>
+          <button class="icon-btn" data-act="edit" data-rt="wall" data-id="${w.id}" title="Edit">✎</button>
+          <button class="icon-btn" data-act="del" data-rt="wall" data-id="${w.id}" title="Delete">✕</button>
         </td>`;
       tbody.appendChild(tr);
     });
     tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (confirm('Delete this zone/obstacle?')) store.deleteZone(b.dataset.id);
+      if (b.dataset.rt === 'wall') {
+        if (confirm('Delete this wall? Any doors mounted on it will be deleted too.')) store.deleteWall(b.dataset.id);
+      } else if (confirm('Delete this zone/obstacle?')) {
+        store.deleteZone(b.dataset.id);
+      }
     }));
     tbody.querySelectorAll('[data-act="convert"]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -744,159 +897,18 @@
         if (updated) loadZoneIntoForm(updated);
       }
     }));
-    tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
-      const z = store.data.zones.find((zz) => zz.id === cell.dataset.id);
-      if (!z) return;
-      loadZoneIntoForm(z);
+    tbody.querySelectorAll('[data-act="view"], [data-act="edit"]').forEach((el) => el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (el.dataset.rt === 'wall') {
+        const w = store.data.walls.find((ww) => ww.id === el.dataset.id);
+        if (!w) return;
+        loadWallIntoForm(w);
+      } else {
+        const z = store.data.zones.find((zz) => zz.id === el.dataset.id);
+        if (!z) return;
+        loadZoneIntoForm(z);
+      }
       formZone.scrollIntoView({ behavior: 'smooth' });
-    }));
-    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const z = store.data.zones.find((zz) => zz.id === b.dataset.id);
-      if (!z) return;
-      loadZoneIntoForm(z);
-      formZone.scrollIntoView({ behavior: 'smooth' });
-    }));
-  }
-
-  // ---------------- Tab 2.75: Interior Walls (shares the Zones tab) ----------------
-  const formWall = document.getElementById('formWall');
-
-  // True if this wall's centerline sits entirely within the warehouse shell
-  // — used for both the live draft preview (red highlight) and to hard-block
-  // Add/Update. Mirrors isZoneFootprintValid's role for zones/obstacles.
-  function isWallValid(w) {
-    const wh = store.data.warehouse;
-    if (!wh || !wh.shape || wh.shape.length < 3) return false;
-    return Model.wallFullyInsidePolygon(w, wh.shape);
-  }
-
-  function getDraftWall() {
-    const draft = {
-      x1: Number(document.getElementById('wallX1').value) || 0,
-      y1: Number(document.getElementById('wallY1').value) || 0,
-      x2: Number(document.getElementById('wallX2').value) || 0,
-      y2: Number(document.getElementById('wallY2').value) || 0,
-      thickness: Number(document.getElementById('wallThickness').value) || 0.15,
-      height: Number(document.getElementById('wallHeightInput').value) || 3
-    };
-    draft.valid = isWallValid(draft);
-    return draft;
-  }
-
-  function renderWallsPlanPreview() {
-    if (window.WallsPlanView) window.WallsPlanView.render({ wall: getDraftWall() });
-  }
-
-  const wallLiveFields = ['wallX1', 'wallY1', 'wallX2', 'wallY2', 'wallThickness', 'wallHeightInput'];
-  wallLiveFields.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', renderWallsPlanPreview);
-  });
-
-  // Populates the form with an existing wall's values and puts the form
-  // into edit mode for it — used by both the name-cell click and the pencil
-  // edit button (same pattern as Zones/Doors).
-  function loadWallIntoForm(w) {
-    document.getElementById('wallName').value = w.name;
-    document.getElementById('wallX1').value = w.x1;
-    document.getElementById('wallY1').value = w.y1;
-    document.getElementById('wallX2').value = w.x2;
-    document.getElementById('wallY2').value = w.y2;
-    document.getElementById('wallThickness').value = w.thickness;
-    document.getElementById('wallHeightInput').value = w.height;
-    editingWallId = w.id;
-    formWall.querySelector('button[type=submit]').textContent = 'Update Wall';
-    document.getElementById('btnCancelWallEdit').hidden = false;
-    renderWallsPlanPreview();
-  }
-
-  function exitWallEditMode() {
-    editingWallId = null;
-    formWall.querySelector('button[type=submit]').textContent = 'Add Wall';
-    document.getElementById('btnCancelWallEdit').hidden = true;
-  }
-
-  function resetWallForm() {
-    formWall.reset();
-    document.getElementById('wallThickness').value = 0.15;
-    document.getElementById('wallHeightInput').value = (store.data.warehouse && store.data.warehouse.height) || 3;
-    renderWallsPlanPreview();
-  }
-
-  document.getElementById('btnCancelWallEdit').addEventListener('click', () => {
-    exitWallEditMode();
-    resetWallForm();
-  });
-
-  document.getElementById('btnFitWallsPlan').addEventListener('click', () => {
-    if (window.WallsPlanView) window.WallsPlanView.resetView({ wall: getDraftWall() });
-  });
-  document.getElementById('btnZoomInWallsPlan').addEventListener('click', () => {
-    if (window.WallsPlanView) window.WallsPlanView.zoomIn();
-  });
-  document.getElementById('btnZoomOutWallsPlan').addEventListener('click', () => {
-    if (window.WallsPlanView) window.WallsPlanView.zoomOut();
-  });
-
-  formWall.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const payload = {
-      name: document.getElementById('wallName').value,
-      x1: document.getElementById('wallX1').value,
-      y1: document.getElementById('wallY1').value,
-      x2: document.getElementById('wallX2').value,
-      y2: document.getElementById('wallY2').value,
-      thickness: document.getElementById('wallThickness').value,
-      height: document.getElementById('wallHeightInput').value
-    };
-    if (!isWallValid(payload)) {
-      alert('This wall falls outside the warehouse shell (or crosses its outline). Adjust its start/end points so the whole wall sits inside before saving.');
-      return;
-    }
-    if (editingWallId) {
-      store.updateWall(editingWallId, payload);
-      exitWallEditMode();
-    } else {
-      store.addWall(payload);
-    }
-    resetWallForm();
-  });
-
-  function renderWallsTable() {
-    const tbody = document.querySelector('#wallsTable tbody');
-    tbody.innerHTML = '';
-    (store.data.walls || []).forEach((w) => {
-      const tr = document.createElement('tr');
-      tr.dataset.id = w.id;
-      tr.innerHTML = `
-        <td class="name-cell" data-act="view" data-id="${w.id}" title="Click to edit">${escapeHtml(w.name)}</td>
-        <td>${w.x1}, ${w.y1}</td>
-        <td>${w.x2}, ${w.y2}</td>
-        <td>${w.thickness} m</td>
-        <td>${w.height} m</td>
-        <td>
-          <button class="icon-btn" data-act="edit" data-id="${w.id}" title="Edit">✎</button>
-          <button class="icon-btn" data-act="del" data-id="${w.id}" title="Delete">✕</button>
-        </td>`;
-      tbody.appendChild(tr);
-    });
-    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (confirm('Delete this wall? Any doors mounted on it will be deleted too.')) store.deleteWall(b.dataset.id);
-    }));
-    tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
-      const w = store.data.walls.find((ww) => ww.id === cell.dataset.id);
-      if (!w) return;
-      loadWallIntoForm(w);
-      formWall.scrollIntoView({ behavior: 'smooth' });
-    }));
-    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const w = store.data.walls.find((ww) => ww.id === b.dataset.id);
-      if (!w) return;
-      loadWallIntoForm(w);
-      formWall.scrollIntoView({ behavior: 'smooth' });
     }));
   }
 
@@ -2145,7 +2157,6 @@
     renderMezzanineGate();
     renderZonesGate();
     renderZonesTable();
-    renderWallsTable();
     renderDoorsGate();
     renderWallOptions();
     renderDoorsTable();
@@ -2163,7 +2174,7 @@
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
     if (currentTab === 'doors') renderDoorsPlanPreview();
-    if (currentTab === 'zones') { renderZonesPlanPreview(); renderWallsPlanPreview(); }
+    if (currentTab === 'zones') renderZonesPlanPreview();
     if (currentTab === 'racks') renderRacksPlanPreview();
     // Runs last — after every table above has rebuilt its rows (and thus its
     // Edit/Delete/Convert buttons) from scratch — so the disabled state

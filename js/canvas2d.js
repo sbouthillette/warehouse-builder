@@ -750,10 +750,9 @@
   // Racks & Aisles tabs.
   const doorsCanvas = document.getElementById('doorsPlanCanvas');
   if (doorsCanvas) window.DoorsPlanView = createPlanView(doorsCanvas);
-  const zonesCanvas = document.getElementById('zonesPlanCanvas');
-  if (zonesCanvas) window.ZonesPlanView = createPlanView(zonesCanvas);
-  const wallsCanvas = document.getElementById('wallsPlanCanvas');
-  if (wallsCanvas) window.WallsPlanView = createPlanView(wallsCanvas);
+  // Walls share the Zones & Obstacles canvas above (render({wall:...}) is
+  // just another draft key the same ZonesPlanView instance understands —
+  // see drawWalls/drawDraftWall) rather than getting a canvas of their own.
   const racksCanvas = document.getElementById('racksPlanCanvas');
   if (racksCanvas) window.RacksPlanView = createPlanView(racksCanvas);
 })();
