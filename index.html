@@ -511,7 +511,7 @@
       <!-- TAB 7: INVENTORY -->
       <section id="tab-inventory" class="tab-panel">
         <h2>Inventory</h2>
-        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, fill in a Part Number (and optionally Quantity) next to each occupied one in Excel, then import it back — occupied locations show up as boxes in the 3D view. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
+        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, then in Excel fill in an LPN (License Plate Number — the ID of the physical pallet/tote/carton) plus a Part Number and Quantity next to each occupied location, and import it back — occupied locations show up as boxes in the 3D view. For a mixed pallet carrying more than one part number, add extra rows with the same Location Code and LPN, one row per part number. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
         <div id="inventoryGate" class="gate-message"></div>
         <div id="inventoryUI" hidden>
           <div class="form-actions">
@@ -527,7 +527,7 @@
 
           <div class="table-wrap">
             <table id="inventoryTable" class="data-table">
-              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Part Number</th><th>Quantity</th><th></th></tr></thead>
+              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>LPN</th><th>Contents</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>

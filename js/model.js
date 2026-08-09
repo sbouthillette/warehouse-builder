@@ -76,16 +76,21 @@ function emptyProject() {
     //   type — 'garage' (wide/tall drive-in or dock door) or 'regular' (pedestrian door).
     doors: [],
     // inventory: [{ id, code, rackId, bayIndex, levelIndex, locationIndex,
-    //   partNumber, quantity }] — one entry per OCCUPIED discrete storage
-    //   location (see Store.listLocations()/buildLocationCode below for what
-    //   a location is and how `code` is derived). Populated by importing an
-    //   .xlsx inventory file from the Inventory tab; simulates a live ERP/WMS
-    //   feed without an actual integration. rackId/bayIndex/levelIndex/
-    //   locationIndex are resolved at import time by matching `code` against
-    //   the model's current locations — if the model changes later (renamed
-    //   rack, different bay count) an entry can go stale/unmatched on the
-    //   next re-import, but a stale entry already in this array still
-    //   renders fine as long as its ids still resolve.
+    //   lpn, contents: [{ partNumber, quantity }] }] — one entry per
+    //   OCCUPIED discrete storage location (see Store.listLocations()/
+    //   buildLocationCode below for what a location is and how `code` is
+    //   derived). `lpn` (License Plate Number) identifies the physical unit
+    //   load — pallet/tote/carton — sitting in that location; `contents` is
+    //   one or more part-number/quantity lines, since one LPN can be a mixed
+    //   pallet carrying several SKUs. Populated by importing an .xlsx
+    //   inventory file from the Inventory tab (one spreadsheet row per
+    //   content line, grouped by matching Location Code + LPN); simulates a
+    //   live ERP/WMS feed without an actual integration. rackId/bayIndex/
+    //   levelIndex/locationIndex are resolved at import time by matching
+    //   `code` against the model's current locations — if the model changes
+    //   later (renamed rack, different bay count) an entry can go stale/
+    //   unmatched on the next re-import, but a stale entry already in this
+    //   array still renders fine as long as its ids still resolve.
     inventory: []
   };
 }

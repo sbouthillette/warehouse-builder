@@ -29,15 +29,20 @@ function escapeHtmlLocal(s) {
 
 function showInventoryInfo(inv) {
   if (!infoPanel) return;
+  const contents = Array.isArray(inv.contents) ? inv.contents : [];
+  const contentsRows = contents.map((line) =>
+    `<div class="info-panel-row"><span>${escapeHtmlLocal(line.partNumber)}</span><span>${escapeHtmlLocal(line.quantity)}</span></div>`
+  ).join('');
   infoPanel.innerHTML = `
     <button type="button" class="info-panel-close" aria-label="Close">×</button>
-    <div class="info-panel-title">${escapeHtmlLocal(inv.partNumber)}</div>
+    <div class="info-panel-title">LPN ${escapeHtmlLocal(inv.lpn)}</div>
     <div class="info-panel-row"><span>Location</span><span>${escapeHtmlLocal(inv.code)}</span></div>
     <div class="info-panel-row"><span>Rack</span><span>${escapeHtmlLocal(inv.rackName)}</span></div>
     <div class="info-panel-row"><span>Bay</span><span>${escapeHtmlLocal(inv.bayLabel)}</span></div>
     <div class="info-panel-row"><span>Level</span><span>${escapeHtmlLocal(inv.levelNumber)}</span></div>
     <div class="info-panel-row"><span>Position</span><span>${escapeHtmlLocal(inv.locationLabel)}</span></div>
-    <div class="info-panel-row"><span>Quantity</span><span>${escapeHtmlLocal(inv.quantity)}</span></div>
+    <div class="info-panel-title" style="margin-top:10px;">Contents</div>
+    ${contentsRows || '<div class="info-panel-row"><span>—</span><span></span></div>'}
   `;
   infoPanel.hidden = false;
   infoPanel.querySelector('.info-panel-close').addEventListener('click', hideInventoryInfo);
@@ -522,7 +527,7 @@ function buildRacks(racks, store) {
             inventoryBoxes.push(box);
             rackGroup.add(box);
 
-            const partTag = makeTextSprite(inv.partNumber);
+            const partTag = makeTextSprite(inv.lpn);
             partTag.scale.set(0.6, 0.25, 1);
             partTag.position.set(segCenter, openBottom + cellH + 0.18, uD / 2);
             rackGroup.add(partTag);

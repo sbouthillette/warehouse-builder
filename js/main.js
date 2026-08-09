@@ -1416,6 +1416,8 @@
     const tbody = document.querySelector('#inventoryTable tbody');
     tbody.innerHTML = '';
     store.data.inventory.forEach((inv) => {
+      const contents = Array.isArray(inv.contents) ? inv.contents : [];
+      const contentsSummary = contents.map((line) => `${line.partNumber} (${line.quantity})`).join(', ');
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${escapeHtml(inv.code)}</td>
@@ -1423,8 +1425,8 @@
         <td>${escapeHtml(inv.bayLabel || '')}</td>
         <td>${inv.levelNumber ?? ''}</td>
         <td>${escapeHtml(inv.locationLabel || '')}</td>
-        <td>${escapeHtml(inv.partNumber)}</td>
-        <td>${inv.quantity}</td>
+        <td>${escapeHtml(inv.lpn || '')}</td>
+        <td>${escapeHtml(contentsSummary)}</td>
         <td><button class="icon-btn" data-act="del" data-id="${inv.id}" title="Remove">✕</button></td>`;
       tbody.appendChild(tr);
     });
@@ -1438,18 +1440,28 @@
     const locations = store.listLocations();
     if (!locations.length) { alert('No storage locations yet — add racks and bay templates first.'); return; }
     const occupiedByCode = new Map(store.data.inventory.map((inv) => [inv.code, inv]));
-    const rows = locations.map((loc) => {
+    const rows = [];
+    locations.forEach((loc) => {
       const existing = occupiedByCode.get(loc.code);
-      return {
+      const base = {
         'Location Code': loc.code,
         'Rack': loc.rackName,
         'Bay': loc.bayLabel,
         'Level': loc.levelNumber,
         'Position': loc.locationLabel,
-        'Level Type': loc.levelType,
-        'Part Number': existing ? existing.partNumber : '',
-        'Quantity': existing ? existing.quantity : ''
+        'Level Type': loc.levelType
       };
+      if (existing && Array.isArray(existing.contents) && existing.contents.length) {
+        // One row per content line — a mixed pallet with several SKUs
+        // exports as several rows sharing the same Location Code + LPN.
+        // To add a mixed pallet by hand, copy a row and give the copy the
+        // same Location Code and LPN but a different Part Number/Quantity.
+        existing.contents.forEach((line) => {
+          rows.push({ ...base, 'LPN': existing.lpn || '', 'Part Number': line.partNumber, 'Quantity': line.quantity });
+        });
+      } else {
+        rows.push({ ...base, 'LPN': '', 'Part Number': '', 'Quantity': '' });
+      }
     });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -1469,15 +1481,44 @@
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
         const byCode = new Map(store.listLocations().map((loc) => [loc.code, loc]));
-        const matched = [];
-        let unmatched = 0, blank = 0;
+
+        // Group spreadsheet rows by Location Code first — a mixed pallet
+        // spans multiple rows sharing the same code (and ideally the same LPN).
+        const groups = new Map(); // code -> array of raw rows
+        let unmatchedRows = 0;
         rows.forEach((row) => {
           const code = String(row['Location Code'] || '').trim();
           if (!code) return;
           const partNumber = String(row['Part Number'] || '').trim();
-          if (!partNumber) { blank++; return; } // no part number = location is empty
+          if (!partNumber) return; // blank part number = location left empty
+          if (!byCode.has(code)) { unmatchedRows++; return; }
+          if (!groups.has(code)) groups.set(code, []);
+          groups.get(code).push(row);
+        });
+
+        const matched = [];
+        const lpnLocations = new Map(); // lpn -> Set of codes it appears at
+        let mismatchedLpnGroups = 0;
+        let autoAssignedLpn = 0;
+
+        groups.forEach((groupRows, code) => {
           const loc = byCode.get(code);
-          if (!loc) { unmatched++; return; }
+          // Resolve one canonical LPN for the group: first non-blank value wins.
+          const lpnValues = groupRows.map((r) => String(r['LPN'] || '').trim()).filter(Boolean);
+          const uniqueLpns = [...new Set(lpnValues)];
+          let lpn = uniqueLpns[0] || '';
+          if (uniqueLpns.length > 1) mismatchedLpnGroups++; // rows disagree on LPN — kept the first, flagged below
+          if (!lpn) { lpn = code; autoAssignedLpn++; } // no LPN given — fall back to the location code so it still displays sensibly
+
+          const contents = groupRows.map((r) => ({
+            partNumber: String(r['Part Number'] || '').trim(),
+            quantity: Number(r['Quantity']) || 1
+          })).filter((line) => line.partNumber);
+          if (!contents.length) return;
+
+          if (!lpnLocations.has(lpn)) lpnLocations.set(lpn, new Set());
+          lpnLocations.get(lpn).add(code);
+
           matched.push({
             id: Model.uid('inv'),
             code: loc.code,
@@ -1489,13 +1530,19 @@
             levelNumber: loc.levelNumber,
             locationIndex: loc.locationIndex,
             locationLabel: loc.locationLabel,
-            partNumber,
-            quantity: Number(row['Quantity']) || 1
+            lpn,
+            contents
           });
         });
+
+        const duplicateLpns = [...lpnLocations.entries()].filter(([, codes]) => codes.size > 1).length;
+
         store.setInventory(matched);
         let msg = `Imported ${matched.length} occupied location(s).`;
-        if (unmatched) msg += ` ${unmatched} row(s) had a location code that doesn't match the current model (renamed rack? changed bay count?) and were skipped — try re-exporting the location list.`;
+        if (unmatchedRows) msg += ` ${unmatchedRows} row(s) had a location code that doesn't match the current model (renamed rack? changed bay count?) and were skipped — try re-exporting the location list.`;
+        if (mismatchedLpnGroups) msg += ` ${mismatchedLpnGroups} location(s) had rows with different LPN values for the same location — used the first one found for each.`;
+        if (autoAssignedLpn) msg += ` ${autoAssignedLpn} location(s) had no LPN filled in — used the location code as a placeholder LPN.`;
+        if (duplicateLpns) msg += ` Warning: ${duplicateLpns} LPN(s) appear at more than one location — an LPN should normally be a single physical unit load in one place.`;
         alert(msg);
       } catch (err) {
         alert('Could not read that file: ' + err.message);
