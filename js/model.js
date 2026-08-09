@@ -91,7 +91,16 @@ function emptyProject() {
     //   later (renamed rack, different bay count) an entry can go stale/
     //   unmatched on the next re-import, but a stale entry already in this
     //   array still renders fine as long as its ids still resolve.
-    inventory: []
+    inventory: [],
+    // itemCatalog: [{ partNumber, description, imageDataUrl }] — master data
+    // for individual SKUs, managed on the Items tab. Keyed by partNumber
+    // (unique — adding an item with an existing partNumber overwrites it).
+    // imageDataUrl is a small downscaled base64 data: URL (kept small so the
+    // whole warehouse JSON stays a reasonable size), or null if no picture
+    // was uploaded yet. Looked up by partNumber when showing a content line's
+    // details in the 3D click-info panel — a part number with no catalog
+    // entry still displays fine, just without a description/picture.
+    itemCatalog: []
   };
 }
 
@@ -323,11 +332,30 @@ function normalizeZone(z) {
 // Upgrades a legacy rectangle-only warehouse ({width, length}, no shape) to
 // the polygon format, in place. Older saved projects (pre-polygon feature)
 // hit this path once when loaded; saving afterwards persists the migration.
+// mezzanine: an optional raised second floor with its own racks. Kept
+// intentionally simple — a single rectangular deck at one height, not a
+// general multi-level model — since real-world sightings top out at
+// ground + one mezzanine. footprint (x/y/width/depth, metres) is a
+// rectangle in warehouse-plan coordinates, independent of the warehouse
+// shell's own outline, so it can cover just part of the building.
+function normalizeMezzanine(mz) {
+  return {
+    enabled: !!(mz && mz.enabled),
+    heightMm: Number(mz && mz.heightMm) || 3000,       // floor-to-floor height to the mezzanine deck
+    deckThicknessMm: Number(mz && mz.deckThicknessMm) || 200,
+    x: Number(mz && mz.x) || 0,
+    y: Number(mz && mz.y) || 0,
+    width: Number(mz && mz.width) || 10,
+    depth: Number(mz && mz.depth) || 10
+  };
+}
+
 function normalizeWarehouse(wh) {
   if (!wh) return wh;
   if (!wh.shape && wh.width != null && wh.length != null) {
     wh.shape = rectanglePoints(wh.width, wh.length);
   }
+  wh.mezzanine = normalizeMezzanine(wh.mezzanine);
   return wh;
 }
 
@@ -468,6 +496,11 @@ function normalizeRack(r) {
   // Legacy racks predate the picking-side feature — default to 'south'
   // (an arbitrary but valid choice) rather than leaving it unset.
   if (!PICKING_SIDES.includes(r.pickingSide)) r.pickingSide = 'south';
+  // floor: which level of the building this rack sits on. 'ground' (default,
+  // matches all pre-mezzanine data) or 'mezzanine' — a mezzanine rack is
+  // rendered elevated by the warehouse's mezzanine height in 3D, and only
+  // shown on the 2D plan's Mezzanine floor toggle.
+  if (r.floor !== 'mezzanine') r.floor = 'ground';
   return r;
 }
 
@@ -548,6 +581,7 @@ class Store {
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
     this.data.zones = (this.data.zones || []).map(normalizeZone);
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
+    this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -617,6 +651,7 @@ class Store {
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
     this.data.zones = (this.data.zones || []).map(normalizeZone);
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
+    this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
     this.notify();
   }
 
@@ -629,7 +664,10 @@ class Store {
       id: this.data.warehouse?.id || uid('wh'),
       name: name || 'Warehouse',
       height: Number(height),
-      shape: (shape || []).map((p) => ({ x: Number(p.x), y: Number(p.y) }))
+      shape: (shape || []).map((p) => ({ x: Number(p.x), y: Number(p.y) })),
+      // mezzanine is edited separately via setMezzanine() (its own form
+      // section) — preserved here so re-saving the shell form doesn't wipe it.
+      mezzanine: normalizeMezzanine(this.data.warehouse?.mezzanine)
     };
     // Keep doors valid if the shell was edited: drop any whose wall no
     // longer exists (fewer edges than before), and clamp position/width so
@@ -653,6 +691,23 @@ class Store {
     this.data.zones = [];
     this.data.racks = [];
     this.data.doors = [];
+    this.notify();
+  }
+
+  // Sets (or updates) the mezzanine: a single rectangular raised deck with
+  // its own racks. Its own method rather than folding into setWarehouse()
+  // since it's edited from a separate form section and shouldn't require
+  // resubmitting the whole shell.
+  setMezzanine(fields) {
+    if (this.isLocked() || !this.data.warehouse) return;
+    this.data.warehouse.mezzanine = normalizeMezzanine({
+      ...this.data.warehouse.mezzanine,
+      ...fields
+    });
+    // Disabling the mezzanine doesn't delete mezzanine racks (their data
+    // isn't lost), but they're hidden from both the 2D floor toggle and the
+    // 3D view until it's re-enabled — see rack.floor filtering in main.js/
+    // three3d.js.
     this.notify();
   }
 
@@ -811,6 +866,8 @@ class Store {
       maxWeightKg: Number(rack.maxWeightKg) || 0, // per-bay max weight capacity
       // which world-space side (N/S/E/W) pickers access the rack from
       pickingSide: PICKING_SIDES.includes(rack.pickingSide) ? rack.pickingSide : 'south',
+      // which building level this rack sits on — see normalizeRack's comment
+      floor: rack.floor === 'mezzanine' ? 'mezzanine' : 'ground',
       // one identifier per bay opening; the UI keeps this in sync with bayCount
       bays: Array.isArray(rack.bays) && rack.bays.length === bayCount ? rack.bays : defaultBays(bayCount)
     };
@@ -907,6 +964,38 @@ class Store {
     this.data.inventory = [];
     this.notify();
   }
+
+  // Adds or overwrites an item catalog entry (keyed by partNumber). Used by
+  // the Items tab's add/edit form — editing an existing part number just
+  // calls this again with the new fields, no separate update method needed.
+  setItem(partNumber, fields) {
+    if (this.isLocked()) return;
+    const pn = String(partNumber || '').trim();
+    if (!pn) return;
+    if (!Array.isArray(this.data.itemCatalog)) this.data.itemCatalog = [];
+    const existing = this.data.itemCatalog.find((it) => it.partNumber === pn);
+    const entry = {
+      partNumber: pn,
+      description: fields && fields.description != null ? String(fields.description) : (existing ? existing.description : ''),
+      imageDataUrl: fields && 'imageDataUrl' in fields ? fields.imageDataUrl : (existing ? existing.imageDataUrl : null)
+    };
+    if (existing) {
+      Object.assign(existing, entry);
+    } else {
+      this.data.itemCatalog.push(entry);
+    }
+    this.notify();
+  }
+
+  deleteItem(partNumber) {
+    if (this.isLocked()) return;
+    this.data.itemCatalog = (this.data.itemCatalog || []).filter((it) => it.partNumber !== partNumber);
+    this.notify();
+  }
+
+  getItem(partNumber) {
+    return (this.data.itemCatalog || []).find((it) => it.partNumber === partNumber) || null;
+  }
 }
 
 // Export a single shared instance
@@ -916,5 +1005,5 @@ window.WarehouseModel = {
   normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays,
   computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone,
   pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge,
-  generateLocationLabels, normalizeBayLevel
+  generateLocationLabels, normalizeBayLevel, normalizeMezzanine
 };

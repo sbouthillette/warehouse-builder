@@ -32,7 +32,7 @@
     // fitted to — not just a one-time boolean — so that switching to a
     // different (or differently-sized) warehouse re-fits automatically
     // instead of keeping a stale scale computed for a previous building.
-    const view = { scale: 20, panX: 40, panY: 40, dragging: false, lastX: 0, lastY: 0, fittedForId: undefined };
+    const view = { scale: 20, panX: 40, panY: 40, dragging: false, lastX: 0, lastY: 0, fittedForId: undefined, floor: 'ground' };
     let lastDraft = null; // { door: {...} } or { zone: {...} }, remembered across pan/zoom/resize re-renders
 
     function resizeCanvas() {
@@ -127,6 +127,26 @@
         ctx.beginPath(); ctx.arc(o.sx, o.sy, 4, 0, Math.PI * 2); ctx.fill();
         ctx.fillText('(0,0)', o.sx + 6, o.sy + 14);
       }
+    }
+
+    // Mezzanine footprint — a dashed purple rectangle outline showing where
+    // the raised deck sits, drawn on both floors so it's clear from Ground
+    // where the mezzanine overhead is, and from Mezzanine what its own
+    // boundary is (racks on that floor should stay within it).
+    function drawMezzanineFootprint(mz) {
+      if (!mz || !mz.enabled) return;
+      const a = worldToScreen(mz.x, mz.y);
+      const b = worldToScreen(mz.x + mz.width, mz.y + mz.depth);
+      ctx.save();
+      ctx.strokeStyle = '#7A4FBF';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(Math.min(a.sx, b.sx), Math.min(a.sy, b.sy), Math.abs(b.sx - a.sx), Math.abs(b.sy - a.sy));
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#7A4FBF';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(`Mezzanine (${mz.heightMm}mm)`, Math.min(a.sx, b.sx), Math.min(a.sy, b.sy) - 6);
+      ctx.restore();
     }
 
     // Flat zones (Storage/Staging/Picking/Dock/Office/Other) render as a
@@ -530,11 +550,28 @@
       drawWarehouse(wh);
       drawZones(store.data.zones);
       if (lastDraft && lastDraft.zone) drawDraftZone(lastDraft.zone);
-      drawRacks(store.data.racks, store);
+      const mz = wh.mezzanine;
+      drawMezzanineFootprint(mz);
+      // Only racks on the currently-selected floor are shown/editable here —
+      // a mezzanine rack would otherwise overlap the ground floor's plan at
+      // the same (x,y), which reads as a collision even though it's really
+      // sitting a level above. Racks predating the mezzanine feature default
+      // to floor:'ground' (see normalizeRack in model.js), so they always
+      // show up on Ground with no migration needed.
+      const racksOnFloor = store.data.racks.filter((r) => (r.floor || 'ground') === view.floor);
+      drawRacks(racksOnFloor, store);
       if (lastDraft && lastDraft.rack) drawDraftRack(lastDraft.rack);
       drawDoors(store.data.doors, wh);
       if (lastDraft && lastDraft.door) drawDraftDoor(wh, lastDraft.door);
       drawScaleBar();
+    }
+
+    // Switches which floor's racks this view shows/highlights — 'ground' or
+    // 'mezzanine'. No-op (still re-renders) if the warehouse has no
+    // mezzanine configured, since every rack is on 'ground' by default.
+    function setFloor(floor) {
+      view.floor = floor === 'mezzanine' ? 'mezzanine' : 'ground';
+      render();
     }
 
     // Rounds a raw "metres per target pixel width" value down to a tidy
@@ -612,7 +649,9 @@
       render,
       resetView: (draft) => { view.fittedForId = null; render(draft); },
       zoomIn: () => applyZoom(1.2),
-      zoomOut: () => applyZoom(1 / 1.2)
+      zoomOut: () => applyZoom(1 / 1.2),
+      setFloor,
+      getFloor: () => view.floor
     };
   }
 

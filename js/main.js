@@ -196,12 +196,14 @@
     if (banner) banner.hidden = !(locked && store.currentId);
     document.querySelectorAll(
       '#tab-warehouse .split-params-col, #tab-zones .split-params-col, ' +
-      '#tab-doors .split-params-col, #tab-bays .split-params-col, #tab-racks .split-params-col'
+      '#tab-doors .split-params-col, #tab-bays .split-params-col, #tab-racks .split-params-col, ' +
+      '#tab-items .split-params-col'
     ).forEach((col) => {
       col.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = locked; });
     });
     document.querySelectorAll(
-      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, #inventoryTable .icon-btn'
+      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
+      '#inventoryTable .icon-btn, #itemsTable .icon-btn'
     ).forEach((el) => { el.disabled = locked; });
     const delBtn = document.getElementById('btnDeleteWarehouse');
     if (delBtn) delBtn.disabled = locked;
@@ -274,6 +276,8 @@
     draftShape = wh?.shape ? wh.shape.map((p) => ({ x: p.x, y: p.y })) : defaultDraftShape();
     renderVertexTable();
     renderShapePreview();
+    mezzFormPopulated = false; // a different warehouse loaded — re-populate mezzanine fields from it
+    renderMezzanineGate();
   }
 
   function renderVertexTable() {
@@ -445,6 +449,7 @@
     });
     if (window.Canvas2D) window.Canvas2D.resetView();
     refreshWarehouseList(store.currentId); // picker label reflects the (possibly renamed) warehouse
+    renderMezzanineGate(); // first save transitions the mezzanine form from gated to visible
   });
 
   function renderWarehouseSummary() {
@@ -462,6 +467,46 @@
       <div>Floor area: ${area.toLocaleString(undefined, { maximumFractionDigits: 1 })} m²</div>
     `;
   }
+
+  // ---------------- Mezzanine (part of Tab 1: Warehouse Shell) ----------------
+  // A raised second floor with its own rectangular footprint — needs a saved
+  // warehouse shell to attach to (setMezzanine requires store.data.warehouse),
+  // so the form is gated the same way Zones/Doors/etc. gate on "add a rack
+  // first" style prerequisites.
+  let mezzFormPopulated = false; // avoid clobbering in-progress edits on every renderAll()
+  function renderMezzanineGate() {
+    const hasWarehouse = !!store.data.warehouse;
+    const gate = document.getElementById('mezzanineGate');
+    const form = document.getElementById('formMezzanine');
+    if (!gate || !form) return;
+    gate.classList.toggle('show', !hasWarehouse);
+    gate.textContent = 'Save the warehouse shell above before configuring a mezzanine.';
+    form.hidden = !hasWarehouse;
+    if (hasWarehouse && !mezzFormPopulated) {
+      const mz = store.data.warehouse.mezzanine || Model.normalizeMezzanine(null);
+      document.getElementById('mezzEnabled').checked = !!mz.enabled;
+      document.getElementById('mezzHeight').value = mz.heightMm;
+      document.getElementById('mezzThickness').value = mz.deckThicknessMm;
+      document.getElementById('mezzX').value = mz.x;
+      document.getElementById('mezzY').value = mz.y;
+      document.getElementById('mezzWidth').value = mz.width;
+      document.getElementById('mezzDepth').value = mz.depth;
+      mezzFormPopulated = true;
+    }
+  }
+
+  document.getElementById('formMezzanine').addEventListener('submit', (e) => {
+    e.preventDefault();
+    store.setMezzanine({
+      enabled: document.getElementById('mezzEnabled').checked,
+      heightMm: document.getElementById('mezzHeight').value,
+      deckThicknessMm: document.getElementById('mezzThickness').value,
+      x: document.getElementById('mezzX').value,
+      y: document.getElementById('mezzY').value,
+      width: document.getElementById('mezzWidth').value,
+      depth: document.getElementById('mezzDepth').value
+    });
+  });
 
   // ---------------- Tab 2: Zones & Obstacles ----------------
   const formZone = document.getElementById('formZone');
@@ -1147,6 +1192,36 @@
     }));
   }
 
+  // ---------------- Ground/Mezzanine floor toggle (Racks & Aisles + 2D Plan) ----------------
+  // Shared across both plan views (and the Racks table) so switching floor
+  // in one place keeps the whole app consistent about which floor you're
+  // looking at, rather than each view tracking it independently.
+  let currentFloor = 'ground';
+  function setCurrentFloor(floor) {
+    currentFloor = floor === 'mezzanine' ? 'mezzanine' : 'ground';
+    document.querySelectorAll('.floor-toggle-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.floor === currentFloor);
+    });
+    if (window.Canvas2D) window.Canvas2D.setFloor(currentFloor);
+    if (window.RacksPlanView) window.RacksPlanView.setFloor(currentFloor);
+    renderRacksTable();
+    renderRacksPlanPreview();
+  }
+  document.querySelectorAll('.floor-toggle-btn').forEach((b) => {
+    b.addEventListener('click', () => setCurrentFloor(b.dataset.floor));
+  });
+
+  function renderFloorToggleVisibility() {
+    const mz = store.data.warehouse && store.data.warehouse.mezzanine;
+    const show = !!(mz && mz.enabled);
+    document.querySelectorAll('.floor-toggle').forEach((el) => { el.hidden = !show; });
+    const rackFloorLabel = document.getElementById('rackFloorLabel');
+    if (rackFloorLabel) rackFloorLabel.hidden = !show;
+    // Mezzanine turned off entirely — fall back to Ground so nothing stays
+    // stuck on a hidden, unreachable floor view.
+    if (!show && currentFloor !== 'ground') setCurrentFloor('ground');
+  }
+
   // ---------------- Tab 4: Racks ----------------
   const formRack = document.getElementById('formRack');
   const rackTemplateSelect = document.getElementById('rackBayTemplate');
@@ -1195,11 +1270,22 @@
 
   // True if a rack with this footprint sits entirely inside the warehouse
   // shell — used both for the live draft preview (red highlight) and to
-  // hard-block Add/Update Rack.
-  function isRackFootprintValid(x, y, rotation, lengthM, depthM) {
+  // hard-block Add/Update Rack. A mezzanine-floor rack is checked against
+  // the mezzanine's own (usually smaller) rectangular footprint instead of
+  // the full warehouse outline, since that deck is what's actually holding it up.
+  function isRackFootprintValid(x, y, rotation, lengthM, depthM, floor) {
     const wh = store.data.warehouse;
     if (!wh || !wh.shape || wh.shape.length < 3) return false;
     const corners = Model.rackCorners({ x, y, rotation, lengthM, depthM });
+    if (floor === 'mezzanine') {
+      const mz = wh.mezzanine;
+      if (!mz || !mz.enabled) return false;
+      const mzPoly = [
+        { x: mz.x, y: mz.y }, { x: mz.x + mz.width, y: mz.y },
+        { x: mz.x + mz.width, y: mz.y + mz.depth }, { x: mz.x, y: mz.y + mz.depth }
+      ];
+      return Model.rectFullyInsidePolygon(corners, mzPoly);
+    }
     return Model.rectFullyInsidePolygon(corners, wh.shape);
   }
 
@@ -1214,6 +1300,8 @@
     const x = Number(document.getElementById('rackX').value) || 0;
     const y = Number(document.getElementById('rackY').value) || 0;
     const rotation = Number(document.getElementById('rackRotation').value) || 0;
+    const floorEl = document.getElementById('rackFloor');
+    const floor = floorEl && !floorEl.closest('label').hidden ? floorEl.value : 'ground';
     return {
       x, y,
       lengthM: fp.lengthM,
@@ -1221,7 +1309,7 @@
       rotation,
       pickingSide: document.getElementById('rackPickingSide').value || 'south',
       name: document.getElementById('rackName').value || '',
-      valid: isRackFootprintValid(x, y, rotation, fp.lengthM, fp.depthM)
+      valid: isRackFootprintValid(x, y, rotation, fp.lengthM, fp.depthM, floor)
     };
   }
 
@@ -1229,11 +1317,15 @@
     if (window.RacksPlanView) window.RacksPlanView.render({ rack: getDraftRack() });
   }
 
-  const rackLiveFields = ['rackName', 'rackBayTemplate', 'rackBayCount', 'rackRotation', 'rackX', 'rackY', 'rackPickingSide'];
+  const rackLiveFields = ['rackName', 'rackBayTemplate', 'rackBayCount', 'rackRotation', 'rackX', 'rackY', 'rackPickingSide', 'rackFloor'];
   rackLiveFields.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', renderRacksPlanPreview);
   });
+  // Choosing a floor in the form switches the whole app's floor view to
+  // match, so the plan preview (and validity check) reflect the right
+  // outline/footprint as you place the rack.
+  document.getElementById('rackFloor').addEventListener('change', (e) => setCurrentFloor(e.target.value));
 
   function exitRackEditMode() {
     editingRackId = null;
@@ -1255,6 +1347,7 @@
     exitRackEditMode();
     formRack.reset();
     document.getElementById('rackPickingSide').value = 'south';
+    document.getElementById('rackFloor').value = currentFloor;
     draftBays = Model.defaultBays(Number(rackBayCountInput.value) || 0);
     renderBaySlotsTable();
     renderRacksPlanPreview();
@@ -1267,9 +1360,12 @@
     const x = Number(document.getElementById('rackX').value) || 0;
     const y = Number(document.getElementById('rackY').value) || 0;
     const rotation = Number(document.getElementById('rackRotation').value) || 0;
+    const mzEnabled = !!(store.data.warehouse && store.data.warehouse.mezzanine && store.data.warehouse.mezzanine.enabled);
+    const floor = mzEnabled ? (document.getElementById('rackFloor').value || 'ground') : 'ground';
     const fp = store.rackFootprint({ bayTemplateId, bayCount });
-    if (!isRackFootprintValid(x, y, rotation, fp.lengthM, fp.depthM)) {
-      alert('This rack falls outside the warehouse shell. Adjust its position, rotation, or bay count so it fits entirely within the outline before saving.');
+    if (!isRackFootprintValid(x, y, rotation, fp.lengthM, fp.depthM, floor)) {
+      const boundary = floor === 'mezzanine' ? "the mezzanine's footprint" : 'the warehouse shell';
+      alert(`This rack falls outside ${boundary}. Adjust its position, rotation, or bay count so it fits entirely within the outline before saving.`);
       return;
     }
     const payload = {
@@ -1277,6 +1373,7 @@
       bayTemplateId,
       bayCount,
       rotation,
+      floor,
       x,
       y,
       pickingSide: document.getElementById('rackPickingSide').value,
@@ -1348,7 +1445,9 @@
   function renderRacksTable() {
     const tbody = document.querySelector('#racksTable tbody');
     tbody.innerHTML = '';
-    store.data.racks.forEach((r) => {
+    // Only the currently-selected floor's racks are listed — keeps this
+    // table in sync with what the plan preview above is actually showing.
+    store.data.racks.filter((r) => (r.floor || 'ground') === currentFloor).forEach((r) => {
       const tpl = store.getRackTemplate(r);
       const fp = store.rackFootprint(r);
       const tr = document.createElement('tr');
@@ -1382,6 +1481,7 @@
       document.getElementById('rackX').value = r.x;
       document.getElementById('rackY').value = r.y;
       document.getElementById('rackPickingSide').value = r.pickingSide || 'south';
+      document.getElementById('rackFloor').value = r.floor || 'ground';
       document.getElementById('rackAisle').value = r.aisleWidth;
       document.getElementById('rackMaxWeight').value = r.maxWeightKg;
       draftBays = Array.isArray(r.bays) && r.bays.length === r.bayCount
@@ -1559,6 +1659,129 @@
     }
   });
 
+  // ---------------- Tab 9: Items (catalog: description + photo per part number) ----------------
+  const formItem = document.getElementById('formItem');
+  const itemPartNumberInput = document.getElementById('itemPartNumber');
+  const itemImageInput = document.getElementById('itemImage');
+  const itemImagePreviewWrap = document.getElementById('itemImagePreviewWrap');
+  const itemImagePreview = document.getElementById('itemImagePreview');
+  let stagedItemImageDataUrl = null; // set by choosing a file (downscaled) or cleared via Remove Photo
+  let editingItemPartNumber = null;  // non-null while editing an existing item
+
+  // Downscales an uploaded image to a small thumbnail before it's stored —
+  // keeps the warehouse JSON a reasonable size even with several item photos.
+  function downscaleImageFile(file, maxDim) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => reject(new Error('Could not read that image.'));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error('Could not read that file.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  itemImageInput.addEventListener('change', async () => {
+    const file = itemImageInput.files[0];
+    if (!file) return;
+    try {
+      stagedItemImageDataUrl = await downscaleImageFile(file, 300);
+      itemImagePreview.src = stagedItemImageDataUrl;
+      itemImagePreviewWrap.hidden = false;
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      itemImageInput.value = '';
+    }
+  });
+
+  document.getElementById('btnRemoveItemImage').addEventListener('click', () => {
+    stagedItemImageDataUrl = null;
+    itemImagePreview.src = '';
+    itemImagePreviewWrap.hidden = true;
+  });
+
+  function resetItemForm() {
+    editingItemPartNumber = null;
+    formItem.reset();
+    stagedItemImageDataUrl = null;
+    itemImagePreviewWrap.hidden = true;
+    itemPartNumberInput.disabled = false;
+    formItem.querySelector('button[type=submit]').textContent = 'Add Item';
+    document.getElementById('btnCancelItemEdit').hidden = true;
+  }
+
+  document.getElementById('btnCancelItemEdit').addEventListener('click', resetItemForm);
+
+  formItem.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const partNumber = itemPartNumberInput.value.trim();
+    if (!partNumber) return;
+    if (!editingItemPartNumber && store.getItem(partNumber)) {
+      if (!confirm(`"${partNumber}" already exists in the catalog — overwrite it?`)) return;
+    }
+    store.setItem(partNumber, {
+      description: document.getElementById('itemDescription').value.trim(),
+      imageDataUrl: stagedItemImageDataUrl
+    });
+    resetItemForm();
+  });
+
+  function renderItemsTable() {
+    const tbody = document.querySelector('#itemsTable tbody');
+    tbody.innerHTML = '';
+    (store.data.itemCatalog || []).forEach((it) => {
+      const tr = document.createElement('tr');
+      const photoCell = it.imageDataUrl
+        ? `<img src="${it.imageDataUrl}" class="item-thumb" alt="" />`
+        : `<div class="item-thumb-placeholder"></div>`;
+      tr.innerHTML = `
+        <td>${photoCell}</td>
+        <td>${escapeHtml(it.partNumber)}</td>
+        <td>${escapeHtml(it.description || '')}</td>
+        <td>
+          <button class="icon-btn" data-act="edit" data-pn="${escapeHtml(it.partNumber)}" title="Edit">✎</button>
+          <button class="icon-btn" data-act="del" data-pn="${escapeHtml(it.partNumber)}" title="Delete">✕</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => {
+      const it = store.getItem(b.dataset.pn);
+      if (!it) return;
+      editingItemPartNumber = it.partNumber;
+      itemPartNumberInput.value = it.partNumber;
+      itemPartNumberInput.disabled = true; // the part number is the catalog key — edit description/photo, not identity
+      document.getElementById('itemDescription').value = it.description || '';
+      stagedItemImageDataUrl = it.imageDataUrl || null;
+      if (stagedItemImageDataUrl) {
+        itemImagePreview.src = stagedItemImageDataUrl;
+        itemImagePreviewWrap.hidden = false;
+      } else {
+        itemImagePreviewWrap.hidden = true;
+      }
+      formItem.querySelector('button[type=submit]').textContent = 'Update Item';
+      document.getElementById('btnCancelItemEdit').hidden = false;
+      formItem.scrollIntoView({ behavior: 'smooth' });
+    }));
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm(`Remove "${b.dataset.pn}" from the item catalog?`)) return;
+      store.deleteItem(b.dataset.pn);
+      if (editingItemPartNumber === b.dataset.pn) resetItemForm();
+    }));
+  }
+
   // ---------------- Legend (2D tab) ----------------
   function renderLegend() {
     const legend = document.getElementById('planLegend');
@@ -1620,6 +1843,7 @@
   function renderAll() {
     renderLockButton();
     renderWarehouseSummary();
+    renderMezzanineGate();
     renderZonesGate();
     renderZonesTable();
     renderDoorsGate();
@@ -1628,10 +1852,12 @@
     renderBayTable();
     renderRackTemplateOptions();
     renderRacksGate();
+    renderFloorToggleVisibility();
     renderRacksTable();
     renderInventoryGate();
     renderInventorySummary();
     renderInventoryTable();
+    renderItemsTable();
     renderLegend();
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);

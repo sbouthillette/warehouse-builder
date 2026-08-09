@@ -65,6 +65,7 @@
       <button class="tab-btn" data-tab="plan2d">6. 2D Plan</button>
       <button class="tab-btn" data-tab="view3d">7. Dynamic Spatial Model (3D)</button>
       <button class="tab-btn" data-tab="inventory">8. Inventory</button>
+      <button class="tab-btn" data-tab="items">9. Items</button>
     </nav>
 
     <main class="content">
@@ -143,6 +144,36 @@
             </div>
 
             <div id="warehouseSummary" class="card summary-card"></div>
+
+            <div id="mezzanineGate" class="gate-message"></div>
+            <form id="formMezzanine" class="card form-grid" hidden>
+              <label class="full-row checkbox-row">
+                <input type="checkbox" id="mezzEnabled" />
+                Enable a mezzanine (raised second floor)
+              </label>
+              <p class="hint full-row">Racks placed on the Mezzanine floor (Tab 5) render elevated in 3D, resting on this deck. Only one mezzanine level is supported — ground + mezzanine.</p>
+              <label>Height to Deck (mm)
+                <input type="number" id="mezzHeight" min="1500" step="50" value="3000" />
+              </label>
+              <label>Deck Thickness (mm)
+                <input type="number" id="mezzThickness" min="50" step="10" value="200" />
+              </label>
+              <label>Footprint X (m)
+                <input type="number" id="mezzX" step="0.1" value="0" />
+              </label>
+              <label>Footprint Y (m)
+                <input type="number" id="mezzY" step="0.1" value="0" />
+              </label>
+              <label>Footprint Width (m)
+                <input type="number" id="mezzWidth" min="0.5" step="0.1" value="10" />
+              </label>
+              <label>Footprint Depth (m)
+                <input type="number" id="mezzDepth" min="0.5" step="0.1" value="10" />
+              </label>
+              <div class="form-actions full-row">
+                <button type="submit" class="btn btn-primary">Save Mezzanine</button>
+              </div>
+            </form>
           </div>
         </div>
       </section>
@@ -390,10 +421,16 @@
           <div class="split-editor">
             <div class="split-main-col">
               <div class="split-preview-col">
-                <div class="canvas-toolbar canvas-toolbar-right">
-                  <button type="button" id="btnZoomOutRacksPlan" class="btn btn-ghost">Zoom Out</button>
-                  <button type="button" id="btnZoomInRacksPlan" class="btn btn-ghost">Zoom In</button>
-                  <button type="button" id="btnFitRacksPlan" class="btn btn-ghost">Fit to View</button>
+                <div class="canvas-toolbar">
+                  <div id="floorToggleRacks" class="floor-toggle" hidden>
+                    <button type="button" class="btn btn-ghost floor-toggle-btn active" data-floor="ground">Ground</button>
+                    <button type="button" class="btn btn-ghost floor-toggle-btn" data-floor="mezzanine">Mezzanine</button>
+                  </div>
+                  <div>
+                    <button type="button" id="btnZoomOutRacksPlan" class="btn btn-ghost">Zoom Out</button>
+                    <button type="button" id="btnZoomInRacksPlan" class="btn btn-ghost">Zoom In</button>
+                    <button type="button" id="btnFitRacksPlan" class="btn btn-ghost">Fit to View</button>
+                  </div>
                 </div>
                 <div class="canvas-wrap">
                   <canvas id="racksPlanCanvas"></canvas>
@@ -427,6 +464,12 @@
                   <select id="rackRotation">
                     <option value="0">0° (along X)</option>
                     <option value="90">90° (along Y)</option>
+                  </select>
+                </label>
+                <label id="rackFloorLabel" hidden>Floor
+                  <select id="rackFloor">
+                    <option value="ground">Ground</option>
+                    <option value="mezzanine">Mezzanine</option>
                   </select>
                 </label>
                 <label>X position (m)
@@ -477,6 +520,10 @@
         <h2>2D Plan View</h2>
         <div class="canvas-toolbar">
           <span id="planLegend" class="legend"></span>
+          <div id="floorTogglePlan2d" class="floor-toggle" hidden>
+            <button type="button" class="btn btn-ghost floor-toggle-btn active" data-floor="ground">Ground</button>
+            <button type="button" class="btn btn-ghost floor-toggle-btn" data-floor="mezzanine">Mezzanine</button>
+          </div>
           <div>
             <button type="button" id="btnZoomOutPlan" class="btn btn-ghost">Zoom Out</button>
             <button type="button" id="btnZoomInPlan" class="btn btn-ghost">Zoom In</button>
@@ -530,6 +577,43 @@
               <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>LPN</th><th>Contents</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 9: ITEMS -->
+      <section id="tab-items" class="tab-panel">
+        <h2>Items</h2>
+        <p class="hint">A small catalog of item master data — description and a picture per part number. Add items here, then click any occupied pallet/box in the 3D view to see its part number, description, quantity, and picture.</p>
+        <div class="split-editor">
+          <div class="split-main-col">
+            <div class="table-wrap">
+              <table id="itemsTable" class="data-table">
+                <thead><tr><th>Photo</th><th>Part Number</th><th>Description</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="split-params-col">
+            <form id="formItem" class="card form-grid">
+              <label>Part Number
+                <input type="text" id="itemPartNumber" placeholder="SKU-10023" required />
+              </label>
+              <label>Description
+                <input type="text" id="itemDescription" placeholder="12V DC Gear Motor, 100RPM" />
+              </label>
+              <label class="full-row">Photo
+                <input type="file" id="itemImage" accept="image/*" />
+              </label>
+              <div id="itemImagePreviewWrap" class="full-row" hidden>
+                <img id="itemImagePreview" class="item-photo-preview" alt="Preview" />
+                <button type="button" id="btnRemoveItemImage" class="btn btn-ghost">Remove Photo</button>
+              </div>
+              <div class="form-actions full-row">
+                <button type="submit" class="btn btn-primary">Add Item</button>
+                <button type="button" id="btnCancelItemEdit" class="btn btn-ghost" hidden>Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       </section>

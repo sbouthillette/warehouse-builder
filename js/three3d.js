@@ -14,6 +14,7 @@ const infoPanel = document.getElementById('inventoryInfoPanel');
 
 let renderer, scene, camera, controls, group;
 let ready = false;
+let lastStore = null; // set on each render(); used to look up item catalog entries for the click-info panel
 
 // Every occupancy box (Inventory tab) built this render — the click handler
 // raycasts against just these, not the whole scene, so clicking a beam or
@@ -30,9 +31,23 @@ function escapeHtmlLocal(s) {
 function showInventoryInfo(inv) {
   if (!infoPanel) return;
   const contents = Array.isArray(inv.contents) ? inv.contents : [];
-  const contentsRows = contents.map((line) =>
-    `<div class="info-panel-row"><span>${escapeHtmlLocal(line.partNumber)}</span><span>${escapeHtmlLocal(line.quantity)}</span></div>`
-  ).join('');
+  const catalog = (lastStore && lastStore.data && lastStore.data.itemCatalog) || [];
+  const findItem = (pn) => catalog.find((it) => it.partNumber === pn) || null;
+  // Each content line gets its own mini card: part number/quantity plus,
+  // when the part number has a matching Items-tab catalog entry, its
+  // description and photo.
+  const contentsRows = contents.map((line) => {
+    const item = findItem(line.partNumber);
+    const photo = item && item.imageDataUrl ? `<img class="info-panel-photo" src="${item.imageDataUrl}" alt="" />` : '';
+    const desc = item && item.description
+      ? `<div class="info-panel-row"><span>Description</span><span>${escapeHtmlLocal(item.description)}</span></div>`
+      : '';
+    return `
+      <div class="info-panel-row"><span>${escapeHtmlLocal(line.partNumber)}</span><span>Qty ${escapeHtmlLocal(line.quantity)}</span></div>
+      ${desc}
+      ${photo}
+    `;
+  }).join('<hr class="info-panel-divider" />');
   infoPanel.innerHTML = `
     <button type="button" class="info-panel-close" aria-label="Close">×</button>
     <div class="info-panel-title">LPN ${escapeHtmlLocal(inv.lpn)}</div>
@@ -322,6 +337,45 @@ function buildPickingIndicator(edge) {
   group.add(cone);
 }
 
+// Renders the mezzanine as a flat rectangular deck slab at its configured
+// height, held up by a simple grid of corner/edge support columns down to
+// the floor — enough to read as "a raised second floor" without modeling a
+// full structural steel frame (which is out of scope for this tool).
+function buildMezzanineDeck(mz) {
+  if (!mz || !mz.enabled) return;
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x8A7CA8, metalness: 0.15, roughness: 0.7 });
+  const columnMat = new THREE.MeshStandardMaterial({ color: 0x5B4E78, metalness: 0.3, roughness: 0.5 });
+
+  const w = mz.width, d = mz.depth;
+  const topY = mz.heightMm / 1000;
+  const thickness = Math.max(mz.deckThicknessMm / 1000, 0.05);
+  const cx = mz.x + w / 2, cz = -(mz.y + d / 2);
+
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w, thickness, d), deckMat);
+  deck.position.set(cx, topY - thickness / 2, cz);
+  group.add(deck);
+
+  // Support columns: one at each corner, plus a mid-span column along the
+  // longer edges every ~6m so a large deck doesn't look like it's floating
+  // on four posts alone.
+  const colSize = 0.15;
+  const colGeo = new THREE.BoxGeometry(colSize, Math.max(topY - thickness, 0.1), colSize);
+  const columnXs = [mz.x + colSize, mz.x + w - colSize];
+  const spanX = w - 2 * colSize;
+  if (spanX > 6) {
+    const extra = Math.floor(spanX / 6);
+    for (let i = 1; i <= extra; i++) columnXs.splice(1, 0, mz.x + colSize + (spanX * i) / (extra + 1));
+  }
+  const columnZs = [-(mz.y + colSize), -(mz.y + d - colSize)];
+  columnXs.forEach((cxPos) => {
+    columnZs.forEach((czPos) => {
+      const col = new THREE.Mesh(colGeo.clone(), columnMat);
+      col.position.set(cxPos, (topY - thickness) / 2, czPos);
+      group.add(col);
+    });
+  });
+}
+
 // Renders each door as a colored panel set into its wall, sized to the
 // door's width/height and rotated to match the wall's direction. Since the
 // warehouse shell itself is a wireframe outline (no solid walls), this reads
@@ -361,6 +415,30 @@ function buildDoors(doors, wh) {
 // whatever headroom a level happens to have.
 const PALLET_LOAD_HEIGHT_M = 1.2;
 
+// Standard wood pallet height (deck + runner blocks), ~140mm — subtracted
+// from the load height above so a pallet location's goods box sits on top
+// of a visible pallet rather than eating the whole load height itself.
+const PALLET_BASE_HEIGHT_M = 0.14;
+
+// Builds a simple stylized pallet (three runner blocks + a deck board) at
+// (cx, cz), resting on the floor at y=floorY, spanning footprint w x d.
+// Returns the Y of the pallet's top face — where a goods box should sit.
+function addPalletBase(parent, mat, cx, floorY, cz, w, d) {
+  const runnerH = Math.min(PALLET_BASE_HEIGHT_M * 0.7, 0.1);
+  const runnerW = Math.max(w * 0.08, 0.04);
+  const runnerPositions = [cx - w / 2 + runnerW / 2, cx, cx + w / 2 - runnerW / 2];
+  runnerPositions.forEach((rx) => {
+    const runner = new THREE.Mesh(new THREE.BoxGeometry(runnerW, runnerH, d * 0.92), mat);
+    runner.position.set(rx, floorY + runnerH / 2, cz);
+    parent.add(runner);
+  });
+  const deckH = Math.max(PALLET_BASE_HEIGHT_M - runnerH, 0.02);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(w, deckH, d), mat);
+  deck.position.set(cx, floorY + runnerH + deckH / 2, cz);
+  parent.add(deck);
+  return { topY: floorY + runnerH + deckH, deckMesh: deck };
+}
+
 function buildRacks(racks, store) {
   // Standard pallet-racking colors: blue upright frames, orange load beams,
   // steel-gray solid shelf decks (loose-stock levels), tan occupancy boxes
@@ -370,6 +448,7 @@ function buildRacks(racks, store) {
   const braceMat = new THREE.MeshStandardMaterial({ color: 0x2E5AA8, metalness: 0.3, roughness: 0.5 });
   const shelfMat = new THREE.MeshStandardMaterial({ color: 0x9BA3AE, metalness: 0.2, roughness: 0.65 });
   const occupiedMat = new THREE.MeshStandardMaterial({ color: 0xC9A063, metalness: 0.05, roughness: 0.85 });
+  const palletMat = new THREE.MeshStandardMaterial({ color: 0xB08A5B, metalness: 0.02, roughness: 0.95 });
 
   // Keyed by rackId|bayIndex|levelIndex|locationIndex — matches how
   // Store.listLocations() enumerates the same locations, so a location's
@@ -378,7 +457,16 @@ function buildRacks(racks, store) {
     (store.data.inventory || []).map((inv) => [`${inv.rackId}|${inv.bayIndex}|${inv.levelIndex}|${inv.locationIndex}`, inv])
   );
 
+  // A mezzanine rack rests on top of the deck rather than the floor — its
+  // whole group gets lifted by the deck's top elevation. If the mezzanine
+  // isn't (or is no longer) enabled, mezzanine-floor racks are skipped
+  // entirely rather than drawn stacked on the ground, which would look like
+  // a modeling error rather than "this floor is currently switched off".
+  const mz = store.data.warehouse && store.data.warehouse.mezzanine;
+  const mezzDeckTopM = mz ? mz.heightMm / 1000 : 0;
+
   racks.forEach((rack) => {
+    if (rack.floor === 'mezzanine' && !(mz && mz.enabled)) return;
     const tpl = store.getRackTemplate(rack);
     if (!tpl) return;
 
@@ -519,17 +607,32 @@ function buildRacks(racks, store) {
             // way up to the top of the uprights, so sizing off the opening
             // stretched top-shelf boxes absurdly tall. Only shrink below the
             // standard height if the level itself is genuinely too short.
-            const cellH = Math.min(PALLET_LOAD_HEIGHT_M, Math.max((openTop - openBottom) * 0.92, 0.05));
+            const totalH = Math.min(PALLET_LOAD_HEIGHT_M, Math.max((openTop - openBottom) * 0.92, 0.05));
             const cellD = uD * 0.85;
-            const box = new THREE.Mesh(new THREE.BoxGeometry(cellW, cellH, cellD), occupiedMat);
-            box.position.set(segCenter, openBottom + cellH / 2 + 0.02, uD / 2);
+            const floorY = openBottom + 0.02;
+
+            let boxBottomY, boxH;
+            if (lv.levelType === 'shelf') {
+              // Loose stock / cartons on a shelf — just the goods, no pallet underneath.
+              boxBottomY = floorY;
+              boxH = totalH;
+            } else {
+              // Pallet location — a real pallet under the load, goods box on top.
+              const baseH = Math.min(PALLET_BASE_HEIGHT_M, totalH * 0.3);
+              const { topY } = addPalletBase(rackGroup, palletMat, segCenter, floorY, uD / 2, cellW, cellD);
+              boxBottomY = topY;
+              boxH = Math.max(totalH - baseH, 0.05);
+            }
+
+            const box = new THREE.Mesh(new THREE.BoxGeometry(cellW * 0.95, boxH, cellD * 0.95), occupiedMat);
+            box.position.set(segCenter, boxBottomY + boxH / 2, uD / 2);
             box.userData.inventory = inv;
             inventoryBoxes.push(box);
             rackGroup.add(box);
 
             const partTag = makeTextSprite(inv.lpn);
             partTag.scale.set(0.6, 0.25, 1);
-            partTag.position.set(segCenter, openBottom + cellH + 0.18, uD / 2);
+            partTag.position.set(segCenter, boxBottomY + boxH + 0.18, uD / 2);
             rackGroup.add(partTag);
           });
         }
@@ -555,9 +658,11 @@ function buildRacks(racks, store) {
       }
     }
 
-    // position & rotate the whole rack group into world space
+    // position & rotate the whole rack group into world space — mezzanine
+    // racks are lifted to rest on top of the deck instead of the floor.
     rackGroup.rotation.y = rack.rotation === 90 ? Math.PI / 2 : 0;
-    rackGroup.position.set(rack.x, 0, -rack.y);
+    const baseY = rack.floor === 'mezzanine' ? mezzDeckTopM : 0;
+    rackGroup.position.set(rack.x, baseY, -rack.y);
     group.add(rackGroup);
 
     const edge = window.WarehouseModel.rackPickingEdge({
@@ -652,11 +757,13 @@ function rotateRight() { rotateBy(-ROTATE_STEP); }
 function render(store) {
   if (!ready) init();
   if (!group) return;
+  lastStore = store; // remembered so the click-info panel can look up item catalog entries later
   clearGroup();
   const wh = store.data.warehouse;
   if (!wh || !wh.shape || wh.shape.length < 3) return;
   buildWarehouseShell(wh);
   buildZones(store.data.zones);
+  buildMezzanineDeck(wh.mezzanine);
   buildRacks(store.data.racks, store);
   buildDoors(store.data.doors, wh);
   resetView(store);
