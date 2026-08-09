@@ -770,8 +770,32 @@
     if (window.ZonesPlanView) window.ZonesPlanView.zoomOut();
   });
 
+  // Some browsers restore a <select>'s previously-chosen option on reload
+  // (bfcache / session restore) without firing a 'change' event, which would
+  // leave zoneKind showing e.g. "Wall" while the form's shown/hidden fields
+  // stay stuck in whatever state they were in when this script last ran
+  // (typically "zone"). Force both selects back to their default option on
+  // every load so the DOM value and the visible field state always start in
+  // sync, then derive the UI from that known value.
+  zoneKindSelect.value = 'zone';
+  zoneShapeSelect.value = 'rect';
   populateZoneTypeOptions('zone');
   updateZoneKindUI();
+
+  // Belt-and-suspenders: some browsers apply the restored value AFTER this
+  // script block finishes (a later microtask/task), in which case the code
+  // above would already be too early. 'pageshow' fires on every render of
+  // the page, including bfcache restores, and running after that point
+  // catches the case where restoration happens later than expected.
+  window.addEventListener('pageshow', () => {
+    if (zoneKindSelect.value !== 'zone' || zoneShapeSelect.value !== 'rect') {
+      zoneKindSelect.value = 'zone';
+      zoneShapeSelect.value = 'rect';
+      populateZoneTypeOptions('zone');
+      updateZoneKindUI();
+      renderZonesPlanPreview();
+    }
+  });
 
   formZone.addEventListener('submit', (e) => {
     e.preventDefault();

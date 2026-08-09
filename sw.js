@@ -8,7 +8,7 @@
 // won before the network was ever consulted, so a shipped fix could appear
 // to silently "not take" in a live tab. The only cost is one extra network
 // round-trip per load when online, negligible for an app this size.
-const CACHE_NAME = 'warehouse-builder-v41';
+const CACHE_NAME = 'warehouse-builder-v42';
 const APP_SHELL = [
   './',
   './index.html',
