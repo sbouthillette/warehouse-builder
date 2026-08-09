@@ -558,7 +558,7 @@
       <!-- TAB 7: INVENTORY -->
       <section id="tab-inventory" class="tab-panel">
         <h2>Inventory</h2>
-        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, then in Excel fill in an LPN (License Plate Number — the ID of the physical pallet/tote/carton) plus a Part Number and Quantity next to each occupied location, and import it back — occupied locations show up as boxes in the 3D view. For a mixed pallet carrying more than one part number, add extra rows with the same Location Code and LPN, one row per part number. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
+        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, then in Excel fill in an LPN (License Plate Number — the ID of the physical pallet/tote/carton) plus a Part Number and Quantity next to each occupied location, and import it back — occupied locations show up as boxes in the 3D view. For a mixed pallet carrying more than one part number, add extra rows with the same Location Code and LPN, one row per part number. The export also includes a Barcode column (pre-filled with the location code, or its current barcode) — edit it and re-import to bulk-update location barcodes, independent of occupancy; a blank cell clears that location's barcode. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
         <div id="inventoryGate" class="gate-message"></div>
         <div id="inventoryUI" hidden>
           <div class="form-actions">
@@ -574,7 +574,20 @@
 
           <div class="table-wrap">
             <table id="inventoryTable" class="data-table">
-              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>LPN</th><th>Contents</th><th></th></tr></thead>
+              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Barcode</th><th>LPN</th><th>Contents</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <h2 class="section-heading">Location Barcodes</h2>
+          <p class="hint">Assign a scannable barcode to each storage location — independent of what's currently stored there. Use the location's own code as-is, or type a custom value. Edit one at a time below, or bulk-edit in Excel via Export/Import above (a Barcode column is included).</p>
+          <div class="form-actions">
+            <button type="button" id="btnFillBarcodesFromCode" class="btn btn-ghost">Fill Blank Barcodes with Location Code</button>
+            <button type="button" id="btnClearAllBarcodes" class="btn btn-danger-ghost">Clear All Barcodes</button>
+          </div>
+          <div class="table-wrap">
+            <table id="locationBarcodesTable" class="data-table">
+              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Barcode</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>

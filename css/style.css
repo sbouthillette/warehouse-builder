@@ -34,6 +34,7 @@
   /* Shape */
   --radius-sm: 8px;
   --radius-md: 12px;
+  --radius-lg: 18px;
 
   /* Spacing scale */
   --sp-1: 4px;
@@ -42,6 +43,26 @@
   --sp-4: 16px;
   --sp-6: 24px;
   --sp-8: 32px;
+
+  /* Glassmorphism system — translucent frosted surfaces layered over the
+     ambient gradient backdrop (see body, below), built entirely from the
+     existing Spatialis OS brand colors so the palette stays the same, just
+     given depth/blur/light instead of flat fills. Two strengths: "glass"
+     for panels that sit over busy content (cards, tables, toolbars) and
+     want to stay legible, "glass-strong" for chrome that should feel more
+     opaque (topbar, sidebar nav, sticky form actions). */
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-bg-tint: rgba(252, 234, 207, 0.35); /* primary-light, translucent */
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-border-soft: rgba(26, 26, 24, 0.08);
+  --glass-blur: blur(18px) saturate(1.4);
+  --glass-blur-soft: blur(10px) saturate(1.2);
+  --glass-shadow: 0 8px 30px rgba(115, 72, 8, 0.1), 0 1px 2px rgba(26, 26, 24, 0.06);
+  --glass-shadow-lifted: 0 14px 40px rgba(115, 72, 8, 0.16), 0 2px 6px rgba(26, 26, 24, 0.08);
+  --glass-inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --motion-fast: 150ms cubic-bezier(.2, .7, .3, 1);
+  --motion-snap: 220ms cubic-bezier(.2, .8, .2, 1);
 }
 
 * { box-sizing: border-box; }
@@ -49,10 +70,25 @@
 html, body {
   height: 100%;
   margin: 0;
-  background: var(--background);
   color: var(--ink);
   font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-weight: 400;
+}
+
+/* Ambient gradient backdrop — soft, low-opacity color blooms in the brand's
+   amber/coral/plum hues, fixed behind the whole app so every frosted-glass
+   surface above has real color/light to blur and refract instead of
+   sitting on flat white. Kept subtle (a working data tool, not a hero
+   splash) and fixed so it doesn't scroll/shift as content does. */
+body {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(720px 520px at 6% -6%, var(--primary-light) 0%, transparent 60%),
+    radial-gradient(680px 520px at 100% 0%, var(--secondary-light) 0%, transparent 55%),
+    radial-gradient(760px 620px at 15% 100%, var(--tertiary-light) 0%, transparent 55%),
+    radial-gradient(900px 700px at 100% 100%, var(--primary-light) 0%, transparent 50%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 #app { display: flex; flex-direction: column; height: 100vh; }
@@ -62,9 +98,14 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) var(--sp-6);
-  background: var(--background);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border-soft);
+  box-shadow: var(--glass-inset-highlight);
   flex-shrink: 0;
+  position: relative;
+  z-index: 5;
 }
 
 .brand { display: flex; align-items: center; gap: var(--sp-3); }
@@ -90,8 +131,10 @@ html, body {
 .save-status { font-size: 13px; color: var(--ink-secondary); margin-right: var(--sp-1); }
 
 .btn {
-  border: 1px solid var(--border);
-  background: var(--background);
+  border: 1px solid var(--glass-border-soft);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
   color: var(--ink);
   padding: 10px 16px;
   border-radius: var(--radius-sm);
@@ -100,44 +143,70 @@ html, body {
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s;
+  box-shadow: var(--glass-inset-highlight), 0 1px 2px rgba(26, 26, 24, 0.04);
+  transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast),
+    transform var(--motion-fast), box-shadow var(--motion-fast);
 }
-.btn:hover { background: var(--surface); border-color: var(--primary-2); }
+/* Crisp, instant-feeling micro-interactions: a small lift + brighter shadow
+   on hover, a quick press-down (scale + flattened shadow) on click — the
+   same pattern repeated across every button variant below so the whole app
+   responds consistently to touch. */
+.btn:hover { background: rgba(255, 255, 255, 0.92); border-color: var(--primary-2); transform: translateY(-1px); box-shadow: var(--glass-inset-highlight), var(--glass-shadow); }
+.btn:active { transform: translateY(0) scale(.98); box-shadow: var(--glass-inset-highlight), 0 1px 2px rgba(26, 26, 24, 0.08); }
+.btn:focus-visible { outline: none; box-shadow: var(--glass-inset-highlight), 0 0 0 3px rgba(201, 126, 13, 0.22); }
 .btn:disabled, .icon-btn:disabled {
   opacity: .4;
   cursor: not-allowed;
   pointer-events: none;
+  transform: none;
 }
 .icon-btn:disabled:hover { background: transparent; color: var(--ink-secondary); }
-.btn-primary { background: var(--secondary-2); border-color: var(--secondary-2); color: #fff; }
-.btn-primary:hover { background: var(--secondary); border-color: var(--secondary); }
-.btn-ghost { background: var(--background); }
-.btn-danger-ghost { background: var(--background); color: var(--status-danger-text); border-color: var(--border); }
-.btn-danger-ghost:hover { background: var(--status-danger-bg); border-color: var(--status-danger-text); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--secondary-2), var(--secondary));
+  border-color: var(--secondary-2);
+  color: #fff;
+  box-shadow: var(--glass-inset-highlight), 0 4px 14px rgba(226, 87, 46, 0.28);
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--secondary-2), var(--secondary));
+  border-color: var(--secondary);
+  box-shadow: var(--glass-inset-highlight), 0 6px 20px rgba(226, 87, 46, 0.36);
+}
+.btn-ghost { background: var(--glass-bg); }
+.btn-danger-ghost { background: var(--glass-bg); color: var(--status-danger-text); border-color: var(--glass-border-soft); }
+.btn-danger-ghost:hover { background: rgba(252, 235, 235, 0.85); border-color: var(--status-danger-text); }
 .file-btn { display: inline-flex; align-items: center; }
 .file-btn.is-disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 .icon-btn {
   background: transparent; border: none; color: var(--ink-secondary); cursor: pointer; font-size: 14px;
   padding: var(--sp-2);
   border-radius: var(--radius-sm);
+  transition: background var(--motion-fast), color var(--motion-fast), transform var(--motion-fast);
 }
-.icon-btn:hover { color: var(--status-danger-text); background: var(--status-danger-bg); }
+.icon-btn:hover { color: var(--status-danger-text); background: var(--status-danger-bg); transform: scale(1.08); }
+.icon-btn:active { transform: scale(.94); }
 
 .switcherbar {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-6);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border-bottom: 1px solid var(--glass-border-soft);
   flex-shrink: 0;
+  position: relative;
+  z-index: 4;
 }
 .lock-banner {
   font-size: 13px;
   font-weight: 500;
   color: var(--status-danger-text);
-  background: var(--status-danger-bg);
-  border: 1px solid var(--status-danger-text);
+  background: rgba(252, 235, 235, 0.75);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px solid rgba(121, 31, 31, 0.35);
   border-radius: var(--radius-sm);
   padding: 6px 10px;
 }
@@ -149,14 +218,22 @@ html, body {
   color: var(--ink-secondary);
 }
 .switcher-label select {
-  background: var(--background);
-  border: 1px solid var(--border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px solid var(--glass-border-soft);
   color: var(--ink);
   padding: 9px 12px;
   border-radius: var(--radius-sm);
   font-family: 'Barlow', sans-serif;
   font-size: 14px;
   min-width: 220px;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.switcher-label select:focus {
+  outline: none;
+  border-color: var(--primary-2);
+  box-shadow: 0 0 0 3px rgba(201, 126, 13, 0.18);
 }
 
 .empty-state {
@@ -170,6 +247,13 @@ html, body {
 .empty-state-inner {
   text-align: center;
   max-width: 420px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-8) var(--sp-6);
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow-lifted);
 }
 .empty-state-logo { width: 220px; max-width: 60%; height: auto; margin: 0 auto var(--sp-6); display: block; }
 .empty-state-inner h2 { margin-bottom: var(--sp-2); }
@@ -180,12 +264,15 @@ html, body {
 .tabs {
   width: 220px;
   flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border-right: 1px solid var(--glass-border-soft);
   display: flex;
   flex-direction: column;
-  padding: var(--sp-3) 0;
+  padding: var(--sp-3) var(--sp-2);
   overflow-y: auto;
+  gap: 2px;
 }
 
 .tab-btn {
@@ -193,15 +280,22 @@ html, body {
   background: transparent;
   border: none;
   color: var(--ink-secondary);
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) var(--sp-3);
   font-family: 'Barlow', sans-serif;
   font-weight: 500;
   font-size: 14px;
   cursor: pointer;
+  border-radius: var(--radius-sm);
   border-left: 3px solid transparent;
+  transition: background var(--motion-fast), color var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast);
 }
-.tab-btn:hover { color: var(--ink); background: var(--background); }
-.tab-btn.active { color: var(--ink); border-left-color: var(--primary-2); background: var(--primary-light); }
+.tab-btn:hover { color: var(--ink); background: rgba(255, 255, 255, 0.55); transform: translateX(2px); }
+.tab-btn.active {
+  color: var(--primary-dark);
+  border-left-color: var(--primary-2);
+  background: linear-gradient(135deg, rgba(242, 169, 60, 0.28), rgba(252, 234, 207, 0.45));
+  box-shadow: var(--glass-inset-highlight), 0 2px 8px rgba(115, 72, 8, 0.12);
+}
 
 .content {
   flex: 1;
@@ -223,12 +317,28 @@ h2 {
 }
 .hint { color: var(--ink-secondary); font-size: 14px; line-height: 1.6; margin: 0 0 var(--sp-4); max-width: 720px; }
 
+/* Secondary heading for a sub-section within a tab (e.g. "Location
+   Barcodes" under the Inventory tab) — same family as h2, smaller, with
+   extra top margin to separate it from whatever came before. */
+.section-heading {
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  font-weight: 500;
+  font-size: 19px;
+  line-height: 1.3;
+  margin: var(--sp-6) 0 var(--sp-2);
+  color: var(--ink);
+}
+
 .card {
-  background: var(--background);
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
   padding: var(--sp-6);
   margin-bottom: var(--sp-4);
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow);
+  transition: box-shadow var(--motion-snap);
 }
 
 .form-grid {
@@ -248,15 +358,22 @@ h2 {
 }
 
 .form-grid input, .form-grid select {
-  background: var(--background);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--glass-border-soft);
   color: var(--ink);
   padding: var(--sp-3);
   border-radius: var(--radius-sm);
   font-family: 'Barlow', sans-serif;
   font-size: 14px;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
 }
-.form-grid input:focus, .form-grid select:focus { outline: none; border-color: var(--primary-2); }
+.form-grid input:hover, .form-grid select:hover { background: rgba(255, 255, 255, 0.88); }
+.form-grid input:focus, .form-grid select:focus {
+  outline: none;
+  border-color: var(--primary-2);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(201, 126, 13, 0.18);
+}
 .form-grid input:disabled, .form-grid select:disabled, .form-grid textarea:disabled { opacity: .5; }
 
 /* Caption / metadata role: Barlow 400 12px, used here as small branded section labels */
@@ -290,8 +407,10 @@ h2 {
   color: var(--ink-secondary);
   font-size: 14px;
   line-height: 1.6;
-  background: var(--surface);
-  border: 1px dashed var(--border);
+  background: var(--glass-bg-tint);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px dashed rgba(201, 126, 13, 0.35);
   border-radius: var(--radius-md);
   padding: var(--sp-4);
   display: none;
@@ -307,14 +426,20 @@ h2 {
   align-items: center;
 }
 .shape-gen-group input, .shape-gen-group select {
-  background: var(--background);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--glass-border-soft);
   color: var(--ink);
   padding: 9px 12px;
   border-radius: var(--radius-sm);
   font-family: 'Barlow', sans-serif;
   font-size: 13px;
   width: 150px;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.shape-gen-group input:focus, .shape-gen-group select:focus {
+  outline: none;
+  border-color: var(--primary-2);
+  box-shadow: 0 0 0 3px rgba(201, 126, 13, 0.18);
 }
 
 .vertex-header {
@@ -328,10 +453,13 @@ h2 {
   width: 100%;
   height: 260px;
   display: block;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-sm);
   margin-top: var(--sp-4);
+  box-shadow: var(--glass-inset-highlight);
 }
 
 /* Split-editor layout: a main column (preview + the item list below it) on
@@ -384,10 +512,12 @@ h2 {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--background);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   padding-bottom: var(--sp-3);
   margin-bottom: var(--sp-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--glass-border-soft);
 }
 .shape-preview-large {
   margin-top: 0;
@@ -405,31 +535,42 @@ h2 {
   .shape-preview-large { height: 300px; }
 }
 
-.data-table input[type="number"] {
-  background: var(--background);
-  border: 1px solid var(--border);
+.data-table input[type="number"], .data-table input[type="text"] {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--glass-border-soft);
   color: var(--ink);
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   font-family: 'Barlow', sans-serif;
   font-size: 13px;
   width: 90px;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
 }
+.data-table input[type="number"]:focus, .data-table input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary-2);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(201, 126, 13, 0.18);
+}
+.data-table .barcode-input { width: 150px; }
 
 .table-wrap { overflow-x: auto; }
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
-  background: var(--background);
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
   overflow: hidden;
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow);
 }
 .data-table th, .data-table td {
   text-align: left;
   padding: var(--sp-3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--glass-border-soft);
   white-space: nowrap;
 }
 .data-table th {
@@ -438,14 +579,15 @@ h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .4px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.35);
 }
 .data-table td { color: var(--ink); font-weight: 400; }
 .data-table tr:last-child td { border-bottom: none; }
-.data-table tr:hover td { background: var(--surface); }
+.data-table tr { transition: background var(--motion-fast); }
+.data-table tr:hover td { background: rgba(242, 169, 60, 0.1); }
 
-.bay-name-cell, .name-cell { cursor: pointer; color: var(--primary-2); font-weight: 500; }
-.bay-name-cell:hover, .name-cell:hover { text-decoration: underline; }
+.bay-name-cell, .name-cell { cursor: pointer; color: var(--primary-2); font-weight: 500; transition: color var(--motion-fast); }
+.bay-name-cell:hover, .name-cell:hover { text-decoration: underline; color: var(--secondary-2); }
 
 @keyframes rowFlash {
   0% { background: var(--primary-light); }
@@ -463,11 +605,14 @@ h2 {
    "hero" panel) so the whole app stays visually consistent; racks/outline
    use saturated brand + rack colors for contrast against it instead. */
 .canvas-wrap {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
   height: calc(100vh - 230px);
   min-height: 400px;
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow);
 }
 .canvas-wrap canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 .canvas-wrap canvas:active { cursor: grabbing; }
@@ -485,12 +630,15 @@ h2 {
 }
 
 .three-wrap {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px solid var(--glass-border-soft);
   border-radius: var(--radius-md);
   height: calc(100vh - 230px);
   min-height: 400px;
   position: relative;
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow);
 }
 .three-wrap canvas { display: block; width: 100%; height: 100%; }
 
@@ -502,14 +650,17 @@ h2 {
   position: absolute;
   left: var(--sp-3);
   bottom: var(--sp-3);
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid var(--border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-size: 11px;
   color: var(--ink-secondary);
   pointer-events: none;
   z-index: 1;
+  box-shadow: var(--glass-shadow);
 }
 
 /* Click-to-inspect popup (Dynamic Spatial Model tab) — shows what's stored
@@ -522,13 +673,20 @@ h2 {
   max-width: 280px;
   max-height: calc(100% - 2 * var(--sp-3));
   overflow-y: auto;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
   padding: var(--sp-3);
   font-size: 13px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow-lifted);
   z-index: 2;
+  animation: infoPanelIn var(--motion-snap);
+}
+@keyframes infoPanelIn {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .info-panel-divider {
   border: none;
@@ -545,8 +703,12 @@ h2 {
   font-size: 16px;
   line-height: 1;
   color: var(--ink-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  transition: color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast);
 }
-.info-panel-close:hover { color: var(--ink); }
+.info-panel-close:hover { color: var(--ink); background: rgba(0, 0, 0, 0.06); transform: scale(1.1); }
+.info-panel-close:active { transform: scale(.92); }
 .info-panel-title {
   font-weight: 700;
   margin-bottom: var(--sp-2);
@@ -573,9 +735,10 @@ h2 {
 /* Ground/Mezzanine floor toggle (Racks & Aisles + 2D Plan tabs) */
 .floor-toggle { display: inline-flex; gap: 2px; }
 .floor-toggle-btn.active {
-  background: var(--primary-2);
+  background: linear-gradient(135deg, var(--primary-2), var(--primary));
   color: #fff;
   border-color: var(--primary-2);
+  box-shadow: var(--glass-inset-highlight), 0 4px 14px rgba(201, 126, 13, 0.32);
 }
 
 /* Items tab (catalog) + click-info panel photo thumbnails */
@@ -584,15 +747,18 @@ h2 {
   height: 40px;
   object-fit: cover;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border-soft);
   display: block;
+  box-shadow: 0 2px 6px rgba(26, 26, 24, 0.12);
+  transition: transform var(--motion-fast);
 }
+.data-table tr:hover .item-thumb { transform: scale(1.08); }
 .item-thumb-placeholder {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-sm);
-  border: 1px dashed var(--border);
-  background: var(--surface-2, #f4f4f4);
+  border: 1px dashed var(--glass-border-soft);
+  background: var(--glass-bg);
 }
 .item-photo-preview {
   max-width: 160px;

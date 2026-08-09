@@ -236,9 +236,14 @@
     // Highlights an in-progress (unsaved) zone/obstacle from the Zones &
     // Obstacles form, so the user sees exactly where it will land before
     // clicking Add.
+    // `draft.valid` (whether it fits fully inside the warehouse shell —
+    // resolved by the caller via Model.zoneFullyInsidePolygon) recolors the
+    // whole highlight red when false, same treatment as drawDraftRack below.
     function drawDraftZone(draft) {
       if (!draft) return;
-      const color = draft.color || (draft.kind === 'obstacle' ? '#5f5e5a' : '#BC5C92');
+      const invalid = draft.valid === false;
+      const color = invalid ? '#C0392B' : (draft.color || (draft.kind === 'obstacle' ? '#5f5e5a' : '#BC5C92'));
+      const accent = invalid ? '#C0392B' : '#E2572E'; // red when out of bounds, else the usual "editing" accent
 
       if (draft.kind === 'obstacle' && draft.shape === 'round') {
         const r = draft.width / 2;
@@ -247,11 +252,18 @@
         const sr = Math.abs(edge.sx - c.sx);
         ctx.fillStyle = hexToRgba(color, 0.3);
         ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#E2572E'; // secondary-2 — a clearly "actively editing" accent
+        ctx.strokeStyle = accent;
         ctx.lineWidth = 3;
         ctx.setLineDash([4, 3]);
         ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
+        if (invalid) {
+          ctx.fillStyle = '#C0392B';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Outside warehouse shell', c.sx, c.sy - sr - 6);
+          ctx.textAlign = 'left';
+        }
         return;
       }
 
@@ -262,11 +274,19 @@
 
       ctx.fillStyle = hexToRgba(color, 0.3);
       ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#E2572E'; // secondary-2 — a clearly "actively editing" accent
+      ctx.strokeStyle = accent;
       ctx.lineWidth = 3;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
+
+      if (invalid) {
+        ctx.fillStyle = '#C0392B';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Outside warehouse shell', x + w / 2, y - 6);
+        ctx.textAlign = 'left';
+      }
     }
 
     // Draws a colored edge + outward-pointing arrow along whichever side of

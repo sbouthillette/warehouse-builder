@@ -203,8 +203,16 @@
     });
     document.querySelectorAll(
       '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
-      '#inventoryTable .icon-btn, #itemsTable .icon-btn'
+      '#inventoryTable .icon-btn, #itemsTable .icon-btn, #locationBarcodesTable .icon-btn'
     ).forEach((el) => { el.disabled = locked; });
+    // Location Barcodes table lives directly on the Inventory tab (not
+    // inside a .split-params-col), so its inline barcode inputs need their
+    // own disabled toggle here.
+    document.querySelectorAll('#locationBarcodesTable .barcode-input').forEach((el) => { el.disabled = locked; });
+    const fillBarcodesBtn = document.getElementById('btnFillBarcodesFromCode');
+    if (fillBarcodesBtn) fillBarcodesBtn.disabled = locked;
+    const clearBarcodesBtn = document.getElementById('btnClearAllBarcodes');
+    if (clearBarcodesBtn) clearBarcodesBtn.disabled = locked;
     const delBtn = document.getElementById('btnDeleteWarehouse');
     if (delBtn) delBtn.disabled = locked;
     // Inventory tab isn't a split-editor form — Export is read-only and
@@ -562,6 +570,15 @@
     renderZonesPlanPreview();
   });
 
+  // True if this zone/obstacle sits entirely within the warehouse shell —
+  // used for both the live draft preview (red highlight) and to hard-block
+  // Add/Update. Mirrors isRackFootprintValid's role for racks.
+  function isZoneFootprintValid(z) {
+    const wh = store.data.warehouse;
+    if (!wh || !wh.shape || wh.shape.length < 3) return false;
+    return Model.zoneFullyInsidePolygon(z, wh.shape);
+  }
+
   function getDraftZoneOrObstacle() {
     const num = (id, fallback) => {
       const v = Number(document.getElementById(id).value);
@@ -570,7 +587,7 @@
     const kind = zoneKindSelect.value;
     const shape = kind === 'obstacle' && zoneShapeSelect.value === 'round' ? 'round' : 'rect';
     const width = num('zoneWidth', 1);
-    return {
+    const draft = {
       kind,
       shape,
       type: document.getElementById('zoneType').value,
@@ -581,6 +598,8 @@
       height: num('zoneHeight', 2),
       color: document.getElementById('zoneColor').value
     };
+    draft.valid = isZoneFootprintValid(draft);
+    return draft;
   }
 
   function renderZonesPlanPreview() {
@@ -662,6 +681,11 @@
       height: document.getElementById('zoneHeight').value,
       color: document.getElementById('zoneColor').value
     };
+    if (!isZoneFootprintValid(payload)) {
+      const noun = payload.kind === 'obstacle' ? 'obstacle' : 'zone';
+      alert(`This ${noun} falls outside the warehouse shell. Adjust its position or size so it fits entirely within the outline before saving.`);
+      return;
+    }
     if (editingZoneId) {
       store.updateZone(editingZoneId, payload);
       exitZoneEditMode();
@@ -1525,6 +1549,7 @@
         <td>${escapeHtml(inv.bayLabel || '')}</td>
         <td>${inv.levelNumber ?? ''}</td>
         <td>${escapeHtml(inv.locationLabel || '')}</td>
+        <td>${escapeHtml(store.getLocationBarcode(inv.code))}</td>
         <td>${escapeHtml(inv.lpn || '')}</td>
         <td>${escapeHtml(contentsSummary)}</td>
         <td><button class="icon-btn" data-act="del" data-id="${inv.id}" title="Remove">✕</button></td>`;
@@ -1549,7 +1574,11 @@
         'Bay': loc.bayLabel,
         'Level': loc.levelNumber,
         'Position': loc.locationLabel,
-        'Level Type': loc.levelType
+        'Level Type': loc.levelType,
+        // Pre-filled with the location's own code as a suggested barcode if
+        // none has been assigned yet — overwrite with a custom value, or
+        // leave as-is to use the location code as the barcode.
+        'Barcode': store.getLocationBarcode(loc.code) || loc.code
       };
       if (existing && Array.isArray(existing.contents) && existing.contents.length) {
         // One row per content line — a mixed pallet with several SKUs
@@ -1581,6 +1610,32 @@
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
         const byCode = new Map(store.listLocations().map((loc) => [loc.code, loc]));
+
+        // Barcodes are processed independent of occupancy — only if the
+        // sheet actually has a Barcode column at all (older exports from
+        // before this feature won't have one; in that case leave every
+        // existing barcode untouched rather than wiping them out). A row
+        // with the column present but blank is treated as "clear this
+        // location's barcode" — deliberate, since the export always fills
+        // it with a value, so a blank means the user cleared it in Excel.
+        const hasBarcodeColumn = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], 'Barcode');
+        let barcodeChanges = 0;
+        if (hasBarcodeColumn) {
+          const barcodeUpdates = new Map(); // code -> barcode ('' = clear)
+          rows.forEach((row) => {
+            const code = String(row['Location Code'] || '').trim();
+            if (!code || !byCode.has(code)) return;
+            barcodeUpdates.set(code, String(row['Barcode'] || '').trim());
+          });
+          if (barcodeUpdates.size) {
+            const merged = new Map((store.data.locationBarcodes || []).map((b) => [b.code, b.barcode]));
+            barcodeUpdates.forEach((barcode, code) => {
+              if (barcode) merged.set(code, barcode); else merged.delete(code);
+            });
+            store.setLocationBarcodes([...merged.entries()].map(([code, barcode]) => ({ code, barcode })));
+            barcodeChanges = barcodeUpdates.size;
+          }
+        }
 
         // Group spreadsheet rows by Location Code first — a mixed pallet
         // spans multiple rows sharing the same code (and ideally the same LPN).
@@ -1643,6 +1698,7 @@
         if (mismatchedLpnGroups) msg += ` ${mismatchedLpnGroups} location(s) had rows with different LPN values for the same location — used the first one found for each.`;
         if (autoAssignedLpn) msg += ` ${autoAssignedLpn} location(s) had no LPN filled in — used the location code as a placeholder LPN.`;
         if (duplicateLpns) msg += ` Warning: ${duplicateLpns} LPN(s) appear at more than one location — an LPN should normally be a single physical unit load in one place.`;
+        if (barcodeChanges) msg += ` Updated barcodes for ${barcodeChanges} location(s).`;
         alert(msg);
       } catch (err) {
         alert('Could not read that file: ' + err.message);
@@ -1656,6 +1712,53 @@
     if (!store.data.inventory.length) return;
     if (confirm('Clear all inventory data? This only clears the simulated occupancy — racks and bays are unaffected.')) {
       store.clearInventory();
+    }
+  });
+
+  // ---------------- Location Barcodes (part of Tab 7: Inventory) ----------------
+  // A barcode identifies the physical LOCATION (a decal on the rack), not
+  // whatever's currently stored there — so, unlike the occupancy table
+  // above, this lists every location whether occupied or not.
+  function renderLocationBarcodesTable() {
+    const tbody = document.querySelector('#locationBarcodesTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    store.listLocations().forEach((loc) => {
+      const tr = document.createElement('tr');
+      const barcode = store.getLocationBarcode(loc.code);
+      tr.innerHTML = `
+        <td>${escapeHtml(loc.code)}</td>
+        <td>${escapeHtml(loc.rackName || '')}</td>
+        <td>${escapeHtml(loc.bayLabel || '')}</td>
+        <td>${loc.levelNumber ?? ''}</td>
+        <td>${escapeHtml(loc.locationLabel || '')}</td>
+        <td><input type="text" class="barcode-input" data-code="${escapeHtml(loc.code)}" value="${escapeHtml(barcode)}" placeholder="—" /></td>
+        <td><button class="icon-btn" data-act="usecode" data-code="${escapeHtml(loc.code)}" title="Use location code as barcode">↺</button></td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.barcode-input').forEach((input) => {
+      input.addEventListener('change', () => {
+        store.setLocationBarcode(input.dataset.code, input.value);
+      });
+    });
+    tbody.querySelectorAll('[data-act="usecode"]').forEach((b) => b.addEventListener('click', () => {
+      store.setLocationBarcode(b.dataset.code, b.dataset.code);
+    }));
+    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
+  }
+
+  document.getElementById('btnFillBarcodesFromCode').addEventListener('click', () => {
+    const records = store.listLocations().map((loc) => ({
+      code: loc.code,
+      barcode: store.getLocationBarcode(loc.code) || loc.code
+    }));
+    store.setLocationBarcodes(records);
+  });
+
+  document.getElementById('btnClearAllBarcodes').addEventListener('click', () => {
+    if (!store.data.locationBarcodes.length) return;
+    if (confirm('Clear all location barcodes? This does not affect inventory or racks.')) {
+      store.setLocationBarcodes([]);
     }
   });
 
@@ -1857,6 +1960,7 @@
     renderInventoryGate();
     renderInventorySummary();
     renderInventoryTable();
+    renderLocationBarcodesTable();
     renderItemsTable();
     renderLegend();
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();

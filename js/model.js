@@ -100,7 +100,18 @@ function emptyProject() {
     // was uploaded yet. Looked up by partNumber when showing a content line's
     // details in the 3D click-info panel — a part number with no catalog
     // entry still displays fine, just without a description/picture.
-    itemCatalog: []
+    itemCatalog: [],
+    // locationBarcodes: [{ code, barcode }] — an optional scannable ID per
+    // discrete storage LOCATION (not per LPN/item — the barcode identifies
+    // the physical slot, like a decal on the rack, independent of whatever
+    // is currently stored there). Keyed by the same location `code` as
+    // inventory (see buildLocationCode/Store.listLocations below); `barcode`
+    // can just be the location code itself or a fully custom value the user
+    // types in. Editable one at a time on the Inventory tab's Locations
+    // table, or in bulk via the same Export/Import .xlsx workflow used for
+    // inventory (a Barcode column). Since it's keyed by `code`, it goes
+    // stale/unmatched the same way inventory does if the model changes later.
+    locationBarcodes: []
   };
 }
 
@@ -282,6 +293,48 @@ function rectFullyInsidePolygon(corners, polygon) {
     }
   }
   return true;
+}
+
+// True if a circle (center + radius, warehouse-space, m) lies entirely
+// within the polygon — center inside (or on the boundary), and no polygon
+// edge passes closer to the center than the radius. Same 1cm "flush against
+// the wall" tolerance as rectFullyInsidePolygon. Used for round obstacles
+// (columns), which can't be checked with the corner-based rectangle test.
+function circleFullyInsidePolygon(center, radius, polygon) {
+  if (!polygon || polygon.length < 3) return false;
+  const eps = 0.01;
+  if (!pointInPolygon(center, polygon) && !pointNearPolygonBoundary(center, polygon, eps)) return false;
+  const polyEdges = wallSegments(polygon);
+  for (const edge of polyEdges) {
+    if (distToSegment(center, edge.p1, edge.p2) < radius - eps) return false;
+  }
+  return true;
+}
+
+// Computes the 4 corners of a rectangular zone/obstacle's footprint from its
+// anchor (x,y — the low corner) and width/length. Zones/obstacles have no
+// rotation field (unlike racks), so this is always axis-aligned.
+function zoneCorners(z) {
+  const x0 = Number(z.x) || 0, y0 = Number(z.y) || 0;
+  const w = Number(z.width) || 0;
+  const l = Number(z.shape === 'round' ? z.width : z.length) || 0;
+  return [
+    { x: x0, y: y0 }, { x: x0 + w, y: y0 },
+    { x: x0 + w, y: y0 + l }, { x: x0, y: y0 + l }
+  ];
+}
+
+// True if a zone/obstacle (rect or round) fits entirely within the given
+// polygon — dispatches to the rectangle or circle containment test based on
+// its shape. Used to keep zones/obstacles fully inside the warehouse shell,
+// the same rule already enforced for racks.
+function zoneFullyInsidePolygon(z, polygon) {
+  if (z.shape === 'round') {
+    const r = (Number(z.width) || 0) / 2;
+    const center = { x: (Number(z.x) || 0) + r, y: (Number(z.y) || 0) + r };
+    return circleFullyInsidePolygon(center, r, polygon);
+  }
+  return rectFullyInsidePolygon(zoneCorners(z), polygon);
 }
 
 // Resolves a rack's chosen picking side ('north'/'south'/'east'/'west' —
@@ -582,6 +635,7 @@ class Store {
     this.data.zones = (this.data.zones || []).map(normalizeZone);
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
+    this.data.locationBarcodes = Array.isArray(this.data.locationBarcodes) ? this.data.locationBarcodes : [];
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -652,6 +706,7 @@ class Store {
     this.data.zones = (this.data.zones || []).map(normalizeZone);
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
+    this.data.locationBarcodes = Array.isArray(this.data.locationBarcodes) ? this.data.locationBarcodes : [];
     this.notify();
   }
 
@@ -996,6 +1051,37 @@ class Store {
   getItem(partNumber) {
     return (this.data.itemCatalog || []).find((it) => it.partNumber === partNumber) || null;
   }
+
+  // Sets (or clears, if barcode is blank) the barcode for one location code.
+  // Upserts by code — one barcode per location, last write wins (used by
+  // both the in-app Locations table and the bulk Excel import).
+  setLocationBarcode(code, barcode) {
+    if (this.isLocked()) return;
+    if (!Array.isArray(this.data.locationBarcodes)) this.data.locationBarcodes = [];
+    const trimmed = String(barcode || '').trim();
+    const existing = this.data.locationBarcodes.find((b) => b.code === code);
+    if (!trimmed) {
+      if (existing) this.data.locationBarcodes = this.data.locationBarcodes.filter((b) => b.code !== code);
+    } else if (existing) {
+      existing.barcode = trimmed;
+    } else {
+      this.data.locationBarcodes.push({ code, barcode: trimmed });
+    }
+    this.notify();
+  }
+
+  // Replaces the whole barcode list at once — used after a bulk Excel
+  // import, where every row has already been resolved against listLocations().
+  setLocationBarcodes(records) {
+    if (this.isLocked()) return;
+    this.data.locationBarcodes = Array.isArray(records) ? records : [];
+    this.notify();
+  }
+
+  getLocationBarcode(code) {
+    const found = (this.data.locationBarcodes || []).find((b) => b.code === code);
+    return found ? found.barcode : '';
+  }
 }
 
 // Export a single shared instance
@@ -1005,5 +1091,6 @@ window.WarehouseModel = {
   normalizeWarehouse, normalizeBayTemplate, normalizeRack, defaultBays,
   computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone,
   pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge,
-  generateLocationLabels, normalizeBayLevel, normalizeMezzanine
+  generateLocationLabels, normalizeBayLevel, normalizeMezzanine,
+  circleFullyInsidePolygon, zoneCorners, zoneFullyInsidePolygon
 };

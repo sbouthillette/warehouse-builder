@@ -48,10 +48,15 @@ function showInventoryInfo(inv) {
       ${photo}
     `;
   }).join('<hr class="info-panel-divider" />');
+  const barcode = lastStore && typeof lastStore.getLocationBarcode === 'function' ? lastStore.getLocationBarcode(inv.code) : '';
+  const barcodeRow = barcode
+    ? `<div class="info-panel-row"><span>Barcode</span><span>${escapeHtmlLocal(barcode)}</span></div>`
+    : '';
   infoPanel.innerHTML = `
     <button type="button" class="info-panel-close" aria-label="Close">×</button>
     <div class="info-panel-title">LPN ${escapeHtmlLocal(inv.lpn)}</div>
     <div class="info-panel-row"><span>Location</span><span>${escapeHtmlLocal(inv.code)}</span></div>
+    ${barcodeRow}
     <div class="info-panel-row"><span>Rack</span><span>${escapeHtmlLocal(inv.rackName)}</span></div>
     <div class="info-panel-row"><span>Bay</span><span>${escapeHtmlLocal(inv.bayLabel)}</span></div>
     <div class="info-panel-row"><span>Level</span><span>${escapeHtmlLocal(inv.levelNumber)}</span></div>
@@ -410,21 +415,26 @@ function buildDoors(doors, wh) {
   });
 }
 
-// A typical loaded pallet (pallet + goods) — used as the occupancy box's
-// height so it looks like a real unit load rather than stretching to fill
-// whatever headroom a level happens to have.
-const PALLET_LOAD_HEIGHT_M = 1.2;
-
-// Standard wood pallet height (deck + runner blocks), ~140mm — subtracted
-// from the load height above so a pallet location's goods box sits on top
-// of a visible pallet rather than eating the whole load height itself.
-const PALLET_BASE_HEIGHT_M = 0.14;
+// Standard pallet dimensions — a 1165x1165mm footprint (the common
+// "square" pallet size) with a 150mm base height. The footprint is a fixed
+// real-world size (clamped down only if a location's slot is narrower than
+// that, so it doesn't poke through an upright or a neighboring position);
+// the base height is likewise fixed, matching a real pallet regardless of
+// how tall the level above it happens to be.
+const PALLET_FOOTPRINT_M = 1.165;
+const PALLET_BASE_HEIGHT_M = 0.15;
+// Small visual gap kept between the top of the goods box and the beam
+// above, so a full-height box reads as "filling the shelf" without
+// appearing to clip through the beam.
+const TOP_CLEARANCE_M = 0.05;
 
 // Builds a simple stylized pallet (three runner blocks + a deck board) at
-// (cx, cz), resting on the floor at y=floorY, spanning footprint w x d.
-// Returns the Y of the pallet's top face — where a goods box should sit.
-function addPalletBase(parent, mat, cx, floorY, cz, w, d) {
-  const runnerH = Math.min(PALLET_BASE_HEIGHT_M * 0.7, 0.1);
+// (cx, cz), resting on the floor at y=floorY, spanning footprint w x d, with
+// the given total height. Returns the Y of the pallet's top face — where a
+// goods box should sit.
+function addPalletBase(parent, mat, cx, floorY, cz, w, d, totalH) {
+  const runnerH = totalH * 0.75;
+  const deckH = Math.max(totalH - runnerH, 0.01);
   const runnerW = Math.max(w * 0.08, 0.04);
   const runnerPositions = [cx - w / 2 + runnerW / 2, cx, cx + w / 2 - runnerW / 2];
   runnerPositions.forEach((rx) => {
@@ -432,7 +442,6 @@ function addPalletBase(parent, mat, cx, floorY, cz, w, d) {
     runner.position.set(rx, floorY + runnerH / 2, cz);
     parent.add(runner);
   });
-  const deckH = Math.max(PALLET_BASE_HEIGHT_M - runnerH, 0.02);
   const deck = new THREE.Mesh(new THREE.BoxGeometry(w, deckH, d), mat);
   deck.position.set(cx, floorY + runnerH + deckH / 2, cz);
   parent.add(deck);
@@ -601,27 +610,32 @@ function buildRacks(racks, store) {
             const inv = invByKey.get(`${rack.id}|${b}|${li}|${k}`);
             if (!inv) return;
             const segCenter = startX + (spacing * (k + 0.5)) / locLabels.length;
-            const cellW = (spacing / locLabels.length) * 0.85;
-            // A standard loaded pallet, not "however much headroom this
-            // level happens to have" — the top level's opening runs all the
-            // way up to the top of the uprights, so sizing off the opening
-            // stretched top-shelf boxes absurdly tall. Only shrink below the
-            // standard height if the level itself is genuinely too short.
-            const totalH = Math.min(PALLET_LOAD_HEIGHT_M, Math.max((openTop - openBottom) * 0.92, 0.05));
-            const cellD = uD * 0.85;
+            const slotW = spacing / locLabels.length;
+            // Real pallet footprint (1165x1165mm standard), shrunk only if
+            // the location slot itself is narrower/shallower than that
+            // (e.g. tight bay spacing) so it never pokes through an
+            // upright or a neighboring position.
+            const cellW = Math.min(PALLET_FOOTPRINT_M, slotW * 0.9);
+            const cellD = Math.min(PALLET_FOOTPRINT_M, uD * 0.9);
             const floorY = openBottom + 0.02;
+            // Fills the level's actual clear opening up to (not touching)
+            // the beam above, rather than a fixed "typical load" height —
+            // a tall level shows a correspondingly tall load, a short one
+            // shows a short one, and nothing ever visually clips the beam.
+            const availableH = Math.max(openTop - floorY - TOP_CLEARANCE_M, 0.05);
 
             let boxBottomY, boxH;
             if (lv.levelType === 'shelf') {
               // Loose stock / cartons on a shelf — just the goods, no pallet underneath.
               boxBottomY = floorY;
-              boxH = totalH;
+              boxH = availableH;
             } else {
-              // Pallet location — a real pallet under the load, goods box on top.
-              const baseH = Math.min(PALLET_BASE_HEIGHT_M, totalH * 0.3);
-              const { topY } = addPalletBase(rackGroup, palletMat, segCenter, floorY, uD / 2, cellW, cellD);
+              // Pallet location — a real 1165x1165x150mm pallet under the
+              // load, goods box on top using the rest of the clear height.
+              const baseH = Math.min(PALLET_BASE_HEIGHT_M, availableH * 0.4);
+              const { topY } = addPalletBase(rackGroup, palletMat, segCenter, floorY, uD / 2, cellW, cellD, baseH);
               boxBottomY = topY;
-              boxH = Math.max(totalH - baseH, 0.05);
+              boxH = Math.max(availableH - baseH, 0.05);
             }
 
             const box = new THREE.Mesh(new THREE.BoxGeometry(cellW * 0.95, boxH, cellD * 0.95), occupiedMat);
