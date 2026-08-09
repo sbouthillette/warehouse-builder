@@ -340,32 +340,74 @@ function buildZones(zones) {
 // buildWarehouseShell above), a solid partition reads more clearly as a
 // physical barrier, and there's no rack/zone visibility concern here since
 // interior walls are thin and typically few in number.
+//
+// Any door mounted on a wall (door.wallKind === 'interior' && wallId === w.id)
+// carves an actual gap out of the solid box rather than being layered on top
+// of it — a full-height, uncut box would completely bury/occlude the door
+// mesh built separately by buildDoors, since the door's thin box sits inside
+// the same footprint. The wall is instead built as one or more box segments
+// along its length, skipping each door's [offset, offset+width] range from
+// the floor up to the door's height, with a "header" segment above the
+// opening (from the door's height up to the wall's full height) so the wall
+// still reads as continuous above the doorway.
 const WALL_COLOR_3D = 0x8a8578;
-function buildWalls(walls) {
+function buildWalls(walls, doors) {
   if (!walls || !walls.length) return;
   const mat = new THREE.MeshStandardMaterial({ color: WALL_COLOR_3D, metalness: 0.05, roughness: 0.85 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x3a3833 });
+
+  // Adds one solid box segment spanning local wall-length range [a, b]
+  // (metres from the wall's start point) and vertical range [floorY, floorY
+  // + segH], sharing the wall's overall position/rotation convention.
+  const addSegment = (w, angle, ux, uy, a, b, floorY, segH) => {
+    const segLen = b - a;
+    if (segLen <= 0.001 || segH <= 0.001) return;
+    const mid = (a + b) / 2;
+    const cx = w.x1 + ux * mid, cy = w.y1 + uy * mid;
+    const geo = new THREE.BoxGeometry(segLen, segH, w.thickness);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(cx, floorY + segH / 2, -cy);
+    mesh.rotation.y = angle;
+    group.add(mesh);
+
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+    edges.position.copy(mesh.position);
+    edges.rotation.copy(mesh.rotation);
+    group.add(edges);
+  };
+
   walls.forEach((w) => {
     const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
     const length = Math.hypot(dx, dy);
     if (length < 0.01) return;
-    const cx = (w.x1 + w.x2) / 2, cy = (w.y1 + w.y2) / 2;
     // Same rotation convention as buildDoors below (mesh.rotation.y = angle,
     // no negation) — both resolve a warehouse-space direction the same way.
     const angle = Math.atan2(dy, dx);
-    const geo = new THREE.BoxGeometry(length, w.height, w.thickness);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(cx, w.height / 2, -cy);
-    mesh.rotation.y = angle;
-    group.add(mesh);
+    const ux = dx / length, uy = dy / length;
 
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geo),
-      new THREE.LineBasicMaterial({ color: 0x3a3833 })
-    );
-    edges.position.copy(mesh.position);
-    edges.rotation.copy(mesh.rotation);
-    group.add(edges);
+    const openings = (doors || [])
+      .filter((d) => d.wallKind === 'interior' && d.wallId === w.id)
+      .map((d) => ({
+        t0: Math.min(Math.max(d.offset, 0), length),
+        t1: Math.min(Math.max(d.offset + d.width, 0), length),
+        h: Math.min(Math.max(d.height, 0), w.height)
+      }))
+      .filter((o) => o.t1 > o.t0)
+      .sort((a, b) => a.t0 - b.t0);
 
+    if (!openings.length) {
+      addSegment(w, angle, ux, uy, 0, length, 0, w.height);
+    } else {
+      let cursor = 0;
+      openings.forEach((o) => {
+        if (o.t0 > cursor) addSegment(w, angle, ux, uy, cursor, o.t0, 0, w.height); // solid before the opening
+        if (o.h < w.height) addSegment(w, angle, ux, uy, o.t0, o.t1, o.h, w.height - o.h); // header above it
+        cursor = Math.max(cursor, o.t1);
+      });
+      if (cursor < length) addSegment(w, angle, ux, uy, cursor, length, 0, w.height); // solid after the last opening
+    }
+
+    const cx = (w.x1 + w.x2) / 2, cy = (w.y1 + w.y2) / 2;
     const label = makeTextSprite(w.name);
     label.position.set(cx, w.height + 0.3, -cy);
     label.scale.set(2, 0.5, 1);
@@ -893,7 +935,7 @@ function render(store) {
   if (!wh || !wh.shape || wh.shape.length < 3) return;
   buildWarehouseShell(wh);
   buildZones(store.data.zones);
-  buildWalls(store.data.walls);
+  buildWalls(store.data.walls, store.data.doors);
   buildMezzanineDeck(wh.mezzanine);
   buildRacks(store.data.racks, store);
   buildDoors(store.data.doors, wh, store.data.walls);
