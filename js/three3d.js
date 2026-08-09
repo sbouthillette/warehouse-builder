@@ -14,6 +14,11 @@ const infoPanel = document.getElementById('inventoryInfoPanel');
 
 let renderer, scene, camera, controls, group;
 let ready = false;
+// Set true if a browser/environment can't create a WebGL context at all
+// (hardware acceleration disabled, a sandboxed/virtualized session, a GPU
+// driver crash, etc.) — see init()'s try/catch below. Once true, init() and
+// render() become permanent no-ops instead of repeatedly throwing.
+let webglFailed = false;
 let lastStore = null; // set on each render(); used to look up item catalog entries for the click-info panel
 
 // Every occupancy box (Inventory tab) built this render — the click handler
@@ -90,43 +95,65 @@ function onCanvasClick(event) {
 }
 
 function init() {
-  if (!container) return;
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf4f3f0); // surface — light viewport, matches the app chrome
-  scene.fog = new THREE.Fog(0xf4f3f0, 60, 260);
+  if (!container || webglFailed) return;
+  try {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf4f3f0); // surface — light viewport, matches the app chrome
+    scene.fog = new THREE.Fog(0xf4f3f0, 60, 260);
 
-  camera = new THREE.PerspectiveCamera(50, containerAspect(), 0.1, 2000);
-  camera.position.set(30, 25, 30);
+    camera = new THREE.PerspectiveCamera(50, containerAspect(), 0.1, 2000);
+    camera.position.set(30, 25, 30);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  resizeRenderer();
-  container.appendChild(renderer.domElement);
-
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-
-  renderer.domElement.addEventListener('click', onCanvasClick);
-
-  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-  scene.add(ambient);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(50, 80, 20);
-  scene.add(dir);
-  const dir2 = new THREE.DirectionalLight(0xd9e6f7, 0.25); // cool fill light
-  dir2.position.set(-40, 30, -40);
-  scene.add(dir2);
-
-  group = new THREE.Group();
-  scene.add(group);
-
-  window.addEventListener('resize', () => {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     resizeRenderer();
-  });
+    container.appendChild(renderer.domElement);
 
-  ready = true;
-  animate();
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    renderer.domElement.addEventListener('click', onCanvasClick);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(50, 80, 20);
+    scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0xd9e6f7, 0.25); // cool fill light
+    dir2.position.set(-40, 30, -40);
+    scene.add(dir2);
+
+    group = new THREE.Group();
+    scene.add(group);
+
+    window.addEventListener('resize', () => {
+      resizeRenderer();
+    });
+
+    ready = true;
+    animate();
+  } catch (err) {
+    // Most commonly: WebGL is unavailable in this browser/environment
+    // (hardware acceleration disabled, a sandboxed/virtualized session, a
+    // GPU driver crash, etc.) — new THREE.WebGLRenderer() throws instead of
+    // failing gracefully, and that exception was previously uncaught,
+    // leaving this tab silently blank with no explanation. There's
+    // genuinely nothing to render to in that case, so show a clear message
+    // instead, and make every other 3D entry point a safe no-op from here on.
+    console.warn('3D view unavailable — could not create a WebGL context:', err);
+    webglFailed = true;
+    showWebglUnavailable(container);
+  }
+}
+
+function showWebglUnavailable(el) {
+  if (!el) return;
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:24px;' +
+    'text-align:center;color:#5f5e5a;font:14px sans-serif;">3D view unavailable — this browser (or its ' +
+    'current settings) blocked WebGL, which the 3D view needs. Try a different browser, or check that ' +
+    'hardware acceleration isn’t disabled in your browser’s settings.</div>';
 }
 
 function containerAspect() {
@@ -857,6 +884,7 @@ function rotateLeft() { rotateBy(ROTATE_STEP); }
 function rotateRight() { rotateBy(-ROTATE_STEP); }
 
 function render(store) {
+  if (webglFailed) return;
   if (!ready) init();
   if (!group) return;
   lastStore = store; // remembered so the click-info panel can look up item catalog entries later

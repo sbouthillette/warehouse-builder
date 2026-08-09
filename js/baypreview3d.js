@@ -11,41 +11,63 @@ const container = document.getElementById('bayPreviewContainer');
 
 let renderer, scene, camera, controls, group;
 let ready = false;
+// Set true if a browser/environment can't create a WebGL context at all
+// (hardware acceleration disabled, a sandboxed/virtualized session, a GPU
+// driver crash, etc.) — see init()'s try/catch below. Once true, init() and
+// render() become permanent no-ops instead of repeatedly throwing.
+let webglFailed = false;
 
 function init() {
-  if (!container) return;
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf4f3f0); // surface — light viewport, matches the app chrome
-  scene.fog = new THREE.Fog(0xf4f3f0, 30, 150);
+  if (!container || webglFailed) return;
+  try {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf4f3f0); // surface — light viewport, matches the app chrome
+    scene.fog = new THREE.Fog(0xf4f3f0, 30, 150);
 
-  camera = new THREE.PerspectiveCamera(50, containerAspect(), 0.05, 500);
-  camera.position.set(6, 5, 6);
+    camera = new THREE.PerspectiveCamera(50, containerAspect(), 0.05, 500);
+    camera.position.set(6, 5, 6);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  resizeRenderer();
-  container.appendChild(renderer.domElement);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    resizeRenderer();
+    container.appendChild(renderer.domElement);
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
 
-  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-  scene.add(ambient);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(10, 16, 6);
-  scene.add(dir);
-  const dir2 = new THREE.DirectionalLight(0xd9e6f7, 0.25); // cool fill light
-  dir2.position.set(-8, 6, -8);
-  scene.add(dir2);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(10, 16, 6);
+    scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0xd9e6f7, 0.25); // cool fill light
+    dir2.position.set(-8, 6, -8);
+    scene.add(dir2);
 
-  group = new THREE.Group();
-  scene.add(group);
+    group = new THREE.Group();
+    scene.add(group);
 
-  window.addEventListener('resize', () => resizeRenderer());
+    window.addEventListener('resize', () => resizeRenderer());
 
-  ready = true;
-  animate();
+    ready = true;
+    animate();
+  } catch (err) {
+    // Most commonly: WebGL is unavailable in this browser/environment — see
+    // the identical catch block in three3d.js's init() for the full
+    // explanation. Same treatment here: log once, remember it, show a
+    // plain-language message in the preview panel instead of a silent
+    // blank box, and never attempt WebGL again for the rest of the session.
+    console.warn('Bay preview unavailable — could not create a WebGL context:', err);
+    webglFailed = true;
+    if (container) {
+      container.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:24px;' +
+        'text-align:center;color:#5f5e5a;font:14px sans-serif;">3D preview unavailable — this browser (or ' +
+        'its current settings) blocked WebGL. Try a different browser, or check that hardware ' +
+        'acceleration isn’t disabled in your browser’s settings.</div>';
+    }
+  }
 }
 
 function containerAspect() {
@@ -241,6 +263,7 @@ function buildBay(tpl) {
 }
 
 function render(tpl) {
+  if (webglFailed) return;
   if (!ready) init();
   if (!group || !container) return;
   clearGroup();
