@@ -1,5 +1,14 @@
-// sw.js — basic offline app-shell cache for Dynamic Spatial Model Builder PWA
-const CACHE_NAME = 'warehouse-builder-v39';
+// sw.js — offline app-shell cache for Dynamic Spatial Model Builder PWA.
+//
+// Network-first, not cache-first: every load tries the network first and
+// only falls back to the cache when offline/unreachable. The previous
+// version was cache-first for same-origin files, which meant that once
+// anything was cached, the browser could keep serving a STALE mix of HTML/
+// JS indefinitely even after a new version was deployed — the cache always
+// won before the network was ever consulted, so a shipped fix could appear
+// to silently "not take" in a live tab. The only cost is one extra network
+// round-trip per load when online, negligible for an app this size.
+const CACHE_NAME = 'warehouse-builder-v40';
 const APP_SHELL = [
   './',
   './index.html',
@@ -18,9 +27,17 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) =>
+      // Each file is fetched individually and a failure is swallowed rather
+      // than propagated. cache.addAll() rejects — aborting the WHOLE
+      // install — if even one file 404s or fails to fetch, which leaves the
+      // browser stuck on the previous service worker (and therefore the
+      // previous app version) indefinitely, with no visible error to the
+      // user. A best-effort pre-cache is enough here since the network-
+      // first fetch handler below re-populates the cache from every
+      // successful load anyway.
+      Promise.allSettled(APP_SHELL.map((url) => cache.add(url)))
+    ).then(() => self.skipWaiting())
   );
 });
 
@@ -44,28 +61,14 @@ self.addEventListener('fetch', (event) => {
 
   if (req.method !== 'GET') return;
 
-  // App-shell files: cache-first for reliable offline app boot.
-  const isSameOrigin = url.origin === self.location.origin;
-
-  if (isSameOrigin) {
-    event.respondWith(
-      caches.match(req).then((cached) => {
-        if (cached) return cached;
-        return fetch(req).then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
-          return res;
-        }).catch(() => cached);
-      })
-    );
-  } else {
-    // Third-party CDN (Three.js): network-first, fall back to cache when offline.
-    event.respondWith(
-      fetch(req).then((res) => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
-        return res;
-      }).catch(() => caches.match(req))
-    );
-  }
+  // Network-first, falling back to whatever's cached only when the network
+  // request fails outright (offline, DNS failure, etc.) — applies equally
+  // to the app's own files and third-party CDN assets (Three.js).
+  event.respondWith(
+    fetch(req).then((res) => {
+      const clone = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+      return res;
+    }).catch(() => caches.match(req))
+  );
 });

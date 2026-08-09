@@ -664,6 +664,19 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW registration failed', e));
   });
+  // If a new service worker takes control while this tab is already open
+  // (e.g. it was left open from before a deploy), reload once so the page's
+  // already-running JS gets replaced by the version that matches the new
+  // service worker/cache. Without this, an open tab could keep running old
+  // JS in memory indefinitely even after the SW itself has updated —
+  // a shipped fix could look like it "didn't take" when it actually did,
+  // it just hadn't reached that tab yet.
+  let refreshingForSwUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshingForSwUpdate) return;
+    refreshingForSwUpdate = true;
+    window.location.reload();
+  });
 }
 </script>
 </body>
