@@ -419,6 +419,37 @@ function buildMezzanineDeck(mz) {
   });
 }
 
+// Builds one shared garage-door material: a small tileable canvas texture
+// of horizontal panel ribs (the light-top/dark-bottom groove look of a real
+// sectional/roll-up door) applied over the existing garage-door color. This
+// follows the same "build the material once, reuse it across many meshes"
+// pattern already used for racks (uprightMat/beamMat/etc. in buildRacks) —
+// called once per buildDoors() run and shared by every garage door drawn
+// that call, so the GPU texture/material count stays flat no matter how
+// many garage doors exist. The canvas itself is tiny (8x64px) and drawn
+// with a handful of fillRect calls, so generating it costs a fraction of a
+// millisecond — there's no image file to fetch and no per-door cost at all.
+function makeGarageDoorMaterial() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 8; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#7C8892'; // matches DOOR_COLORS.garage
+  ctx.fillRect(0, 0, 8, 64);
+  const ribHeight = 16;
+  for (let y = 0; y < 64; y += ribHeight) {
+    ctx.fillStyle = 'rgba(255,255,255,0.32)'; // top highlight edge of each panel
+    ctx.fillRect(0, y, 8, 2);
+    ctx.fillStyle = 'rgba(20,20,20,0.3)'; // bottom shadow edge (the groove)
+    ctx.fillRect(0, y + ribHeight - 3, 8, 3);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 4); // 4 horizontal panel ribs, sized for a typical ~4m garage door
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshStandardMaterial({ map: tex, metalness: 0.3, roughness: 0.6, side: THREE.DoubleSide });
+}
+
 // Renders each door as a colored panel set into its wall, sized to the
 // door's width/height and rotated to match the wall's direction. Shell
 // doors read as a colored opening/panel along the wireframe wall line
@@ -428,13 +459,23 @@ function buildMezzanineDeck(mz) {
 // reason a full CSG boolean is out of scope for this tool).
 function buildDoors(doors, wh, walls) {
   if (!doors || !doors.length) return;
+  // Lazily built on the first garage door encountered (and only then) —
+  // shared by every garage door in this call, disposed together with them
+  // by clearGroup() next render, and rebuilt fresh next time. Regular doors
+  // are unaffected and keep their own plain-color material as before.
+  let garageMat = null;
   doors.forEach((d) => {
     const dp = window.WarehouseModel.doorPoints(wh.shape, walls, d);
     if (!dp) return;
-    const mat = new THREE.MeshStandardMaterial({
-      color: DOOR_COLORS[d.type] || DOOR_COLORS.regular,
-      metalness: 0.25, roughness: 0.55, side: THREE.DoubleSide
-    });
+    let mat;
+    if (d.type === 'garage') {
+      if (!garageMat) garageMat = makeGarageDoorMaterial();
+      mat = garageMat;
+    } else {
+      mat = new THREE.MeshStandardMaterial({
+        color: DOOR_COLORS.regular, metalness: 0.25, roughness: 0.55, side: THREE.DoubleSide
+      });
+    }
     const geo = new THREE.BoxGeometry(d.width, d.height, 0.08);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(dp.mid.x, d.height / 2, -dp.mid.y);
