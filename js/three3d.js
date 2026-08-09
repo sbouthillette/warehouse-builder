@@ -611,12 +611,11 @@ function buildRacks(racks, store) {
             if (!inv) return;
             const segCenter = startX + (spacing * (k + 0.5)) / locLabels.length;
             const slotW = spacing / locLabels.length;
-            // Real pallet footprint (1165x1165mm standard), shrunk only if
-            // the location slot itself is narrower/shallower than that
-            // (e.g. tight bay spacing) so it never pokes through an
-            // upright or a neighboring position.
+            // Real pallet footprint (1165x1165mm standard), shrunk along
+            // the bay-spacing axis only if the location slot itself is
+            // narrower than that (e.g. tight bay spacing) so it never
+            // pokes through an upright or a neighboring position.
             const cellW = Math.min(PALLET_FOOTPRINT_M, slotW * 0.9);
-            const cellD = Math.min(PALLET_FOOTPRINT_M, uD * 0.9);
             const floorY = openBottom + 0.02;
             // Fills the level's actual clear opening up to (not touching)
             // the beam above, rather than a fixed "typical load" height —
@@ -624,14 +623,21 @@ function buildRacks(racks, store) {
             // shows a short one, and nothing ever visually clips the beam.
             const availableH = Math.max(openTop - floorY - TOP_CLEARANCE_M, 0.05);
 
-            let boxBottomY, boxH;
+            let boxBottomY, boxH, cellD;
             if (lv.levelType === 'shelf') {
-              // Loose stock / cartons on a shelf — just the goods, no pallet underneath.
+              // Loose stock / cartons on a shelf — just the goods, confined
+              // to the shelf's own depth (no overhang; nothing underneath).
+              cellD = Math.min(PALLET_FOOTPRINT_M, uD * 0.9);
               boxBottomY = floorY;
               boxH = availableH;
             } else {
-              // Pallet location — a real 1165x1165x150mm pallet under the
-              // load, goods box on top using the rest of the clear height.
+              // Pallet location — a real 1165x1165x150mm pallet, at its
+              // true depth even when that's deeper than the rack frame
+              // (frames are commonly 900mm deep). A forklift driver
+              // centers the pallet front-to-back on the rack, so it's
+              // meant to overhang the front and back beams evenly rather
+              // than being squeezed to fit inside the frame depth.
+              cellD = PALLET_FOOTPRINT_M;
               const baseH = Math.min(PALLET_BASE_HEIGHT_M, availableH * 0.4);
               const { topY } = addPalletBase(rackGroup, palletMat, segCenter, floorY, uD / 2, cellW, cellD, baseH);
               boxBottomY = topY;
