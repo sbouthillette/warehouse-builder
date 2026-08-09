@@ -1,4 +1,4 @@
-# Restricting Warehouse Builder to your Google Workspace
+# Restricting Dynamic Spatial Model Builder to your Google Workspace
 
 This adds a Google sign-in gate in front of the whole app (every page and
 every `/api/warehouses` call) so only people signed into a Google account on

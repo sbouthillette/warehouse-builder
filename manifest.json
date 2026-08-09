@@ -1,6 +1,6 @@
 {
-  "name": "Warehouse Builder — Digital Twin",
-  "short_name": "Warehouse Builder",
+  "name": "Dynamic Spatial Model Builder",
+  "short_name": "DSM Builder",
   "description": "Build a digital twin of a warehouse: shell, zones, racking bays and aisles, in 2D and 3D.",
   "start_url": "./index.html",
   "scope": "./",

@@ -1,4 +1,4 @@
-// model.js — Warehouse Builder data model + cloud persistence (Vercel Postgres via /api/warehouses)
+// model.js — Dynamic Spatial Model Builder data model + cloud persistence (Vercel Postgres via /api/warehouses)
 // All linear dimensions are stored in millimetres (mm) internally EXCEPT
 // warehouse/zone/rack X,Y positions and warehouse width/length/height, which
 // are stored in metres (m) since they describe the building footprint.

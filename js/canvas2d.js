@@ -1,4 +1,4 @@
-// canvas2d.js — top-down 2D plan renderer for Warehouse Builder.
+// canvas2d.js — top-down 2D plan renderer for Dynamic Spatial Model Builder.
 // Coordinate convention: warehouse (0,0) is bottom-left (the origin), X to the
 // right, Y upward. Canvas pixel Y grows downward, so we flip Y when drawing.
 //

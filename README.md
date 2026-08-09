@@ -1,4 +1,4 @@
-# Warehouse Builder — Digital Twin PWA
+# Dynamic Spatial Model Builder — Spatialis OS Digital Twin PWA
 
 A PWA for building a digital twin of a warehouse: shell, zones, racking bays, racks and aisles, in both a 2D plan and a 3D view. Multiple warehouses are saved to a Postgres database so you can switch between them.
 
