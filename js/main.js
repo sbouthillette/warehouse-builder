@@ -3,6 +3,7 @@
   const store = window.WarehouseStore;
   let currentTab = 'warehouse';
   let editingZoneId = null;
+  let editingWallId = null;
   let editingDoorId = null;
   let editingBayId = null;
   let editingRackId = null;
@@ -30,8 +31,9 @@
       renderWallOptions();
       if (window.DoorsPlanView) window.DoorsPlanView.resetView({ door: getDraftDoor() });
     }
-    if (tab === 'zones' && window.ZonesPlanView) { // function declaration below is hoisted within this closure
-      window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
+    if (tab === 'zones') { // function declarations below are hoisted within this closure
+      if (window.ZonesPlanView) window.ZonesPlanView.resetView({ zone: getDraftZoneOrObstacle() });
+      if (window.WallsPlanView) window.WallsPlanView.resetView({ wall: getDraftWall() });
     }
     if (tab === 'racks' && window.RacksPlanView) { // function declaration below is hoisted within this closure
       window.RacksPlanView.resetView({ rack: getDraftRack() });
@@ -202,7 +204,7 @@
       col.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = locked; });
     });
     document.querySelectorAll(
-      '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
+      '#zonesTable .icon-btn, #wallsTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
       '#inventoryTable .icon-btn, #itemsTable .icon-btn, #locationBarcodesTable .icon-btn'
     ).forEach((el) => { el.disabled = locked; });
     // Location Barcodes table lives directly on the Inventory tab (not
@@ -757,6 +759,147 @@
     }));
   }
 
+  // ---------------- Tab 2.75: Interior Walls (shares the Zones tab) ----------------
+  const formWall = document.getElementById('formWall');
+
+  // True if this wall's centerline sits entirely within the warehouse shell
+  // — used for both the live draft preview (red highlight) and to hard-block
+  // Add/Update. Mirrors isZoneFootprintValid's role for zones/obstacles.
+  function isWallValid(w) {
+    const wh = store.data.warehouse;
+    if (!wh || !wh.shape || wh.shape.length < 3) return false;
+    return Model.wallFullyInsidePolygon(w, wh.shape);
+  }
+
+  function getDraftWall() {
+    const draft = {
+      x1: Number(document.getElementById('wallX1').value) || 0,
+      y1: Number(document.getElementById('wallY1').value) || 0,
+      x2: Number(document.getElementById('wallX2').value) || 0,
+      y2: Number(document.getElementById('wallY2').value) || 0,
+      thickness: Number(document.getElementById('wallThickness').value) || 0.15,
+      height: Number(document.getElementById('wallHeightInput').value) || 3
+    };
+    draft.valid = isWallValid(draft);
+    return draft;
+  }
+
+  function renderWallsPlanPreview() {
+    if (window.WallsPlanView) window.WallsPlanView.render({ wall: getDraftWall() });
+  }
+
+  const wallLiveFields = ['wallX1', 'wallY1', 'wallX2', 'wallY2', 'wallThickness', 'wallHeightInput'];
+  wallLiveFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', renderWallsPlanPreview);
+  });
+
+  // Populates the form with an existing wall's values and puts the form
+  // into edit mode for it — used by both the name-cell click and the pencil
+  // edit button (same pattern as Zones/Doors).
+  function loadWallIntoForm(w) {
+    document.getElementById('wallName').value = w.name;
+    document.getElementById('wallX1').value = w.x1;
+    document.getElementById('wallY1').value = w.y1;
+    document.getElementById('wallX2').value = w.x2;
+    document.getElementById('wallY2').value = w.y2;
+    document.getElementById('wallThickness').value = w.thickness;
+    document.getElementById('wallHeightInput').value = w.height;
+    editingWallId = w.id;
+    formWall.querySelector('button[type=submit]').textContent = 'Update Wall';
+    document.getElementById('btnCancelWallEdit').hidden = false;
+    renderWallsPlanPreview();
+  }
+
+  function exitWallEditMode() {
+    editingWallId = null;
+    formWall.querySelector('button[type=submit]').textContent = 'Add Wall';
+    document.getElementById('btnCancelWallEdit').hidden = true;
+  }
+
+  function resetWallForm() {
+    formWall.reset();
+    document.getElementById('wallThickness').value = 0.15;
+    document.getElementById('wallHeightInput').value = (store.data.warehouse && store.data.warehouse.height) || 3;
+    renderWallsPlanPreview();
+  }
+
+  document.getElementById('btnCancelWallEdit').addEventListener('click', () => {
+    exitWallEditMode();
+    resetWallForm();
+  });
+
+  document.getElementById('btnFitWallsPlan').addEventListener('click', () => {
+    if (window.WallsPlanView) window.WallsPlanView.resetView({ wall: getDraftWall() });
+  });
+  document.getElementById('btnZoomInWallsPlan').addEventListener('click', () => {
+    if (window.WallsPlanView) window.WallsPlanView.zoomIn();
+  });
+  document.getElementById('btnZoomOutWallsPlan').addEventListener('click', () => {
+    if (window.WallsPlanView) window.WallsPlanView.zoomOut();
+  });
+
+  formWall.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById('wallName').value,
+      x1: document.getElementById('wallX1').value,
+      y1: document.getElementById('wallY1').value,
+      x2: document.getElementById('wallX2').value,
+      y2: document.getElementById('wallY2').value,
+      thickness: document.getElementById('wallThickness').value,
+      height: document.getElementById('wallHeightInput').value
+    };
+    if (!isWallValid(payload)) {
+      alert('This wall falls outside the warehouse shell (or crosses its outline). Adjust its start/end points so the whole wall sits inside before saving.');
+      return;
+    }
+    if (editingWallId) {
+      store.updateWall(editingWallId, payload);
+      exitWallEditMode();
+    } else {
+      store.addWall(payload);
+    }
+    resetWallForm();
+  });
+
+  function renderWallsTable() {
+    const tbody = document.querySelector('#wallsTable tbody');
+    tbody.innerHTML = '';
+    (store.data.walls || []).forEach((w) => {
+      const tr = document.createElement('tr');
+      tr.dataset.id = w.id;
+      tr.innerHTML = `
+        <td class="name-cell" data-act="view" data-id="${w.id}" title="Click to edit">${escapeHtml(w.name)}</td>
+        <td>${w.x1}, ${w.y1}</td>
+        <td>${w.x2}, ${w.y2}</td>
+        <td>${w.thickness} m</td>
+        <td>${w.height} m</td>
+        <td>
+          <button class="icon-btn" data-act="edit" data-id="${w.id}" title="Edit">✎</button>
+          <button class="icon-btn" data-act="del" data-id="${w.id}" title="Delete">✕</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('Delete this wall? Any doors mounted on it will be deleted too.')) store.deleteWall(b.dataset.id);
+    }));
+    tbody.querySelectorAll('[data-act="view"]').forEach((cell) => cell.addEventListener('click', () => {
+      const w = store.data.walls.find((ww) => ww.id === cell.dataset.id);
+      if (!w) return;
+      loadWallIntoForm(w);
+      formWall.scrollIntoView({ behavior: 'smooth' });
+    }));
+    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const w = store.data.walls.find((ww) => ww.id === b.dataset.id);
+      if (!w) return;
+      loadWallIntoForm(w);
+      formWall.scrollIntoView({ behavior: 'smooth' });
+    }));
+  }
+
   // ---------------- Tab 2.5: Doors ----------------
   const formDoor = document.getElementById('formDoor');
   const doorTypeSelect = document.getElementById('doorType');
@@ -775,31 +918,74 @@
     renderDoorsPlanPreview();
   });
 
-  // Populates the Wall dropdown from the current warehouse shape's edges.
-  // Called whenever the Doors tab is shown and whenever the shell changes,
-  // since editing the outline can add/remove/resize walls.
+  // Populates the Wall dropdown from the current warehouse shape's edges
+  // PLUS every interior wall (Tab 3) — shell edges in one optgroup, interior
+  // walls in another. Option values disambiguate the two: a plain index
+  // ("0", "1", ...) means a shell edge; an "int:<id>" value means an
+  // interior wall. Called whenever the Doors tab is shown and whenever the
+  // shell or the wall list changes, since either can add/remove/resize walls.
   function renderWallOptions() {
     const wh = store.data.warehouse;
-    const walls = wh && wh.shape ? Model.wallSegments(wh.shape) : [];
+    const shellWalls = wh && wh.shape ? Model.wallSegments(wh.shape) : [];
+    const interiorWalls = store.data.walls || [];
     const prevValue = doorWallSelect.value;
-    doorWallSelect.innerHTML = walls.map((w) =>
-      `<option value="${w.index}">Wall ${w.index + 1} — ${w.length.toFixed(1)} m</option>`
-    ).join('');
-    if (walls.some((w) => String(w.index) === prevValue)) doorWallSelect.value = prevValue;
+    let html = '';
+    if (shellWalls.length) {
+      html += `<optgroup label="Exterior (Shell)">${shellWalls.map((w) =>
+        `<option value="${w.index}">Wall ${w.index + 1} — ${w.length.toFixed(1)} m</option>`
+      ).join('')}</optgroup>`;
+    }
+    if (interiorWalls.length) {
+      html += `<optgroup label="Interior Walls">${interiorWalls.map((w) => {
+        const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+        return `<option value="int:${w.id}">${escapeHtml(w.name)} — ${len.toFixed(1)} m</option>`;
+      }).join('')}</optgroup>`;
+    }
+    doorWallSelect.innerHTML = html;
+    const values = new Set([
+      ...shellWalls.map((w) => String(w.index)),
+      ...interiorWalls.map((w) => `int:${w.id}`)
+    ]);
+    if (values.has(prevValue)) doorWallSelect.value = prevValue;
+  }
+
+  // Resolves the Doors form's currently-selected wall dropdown value to
+  // { wallKind, wallIndex?, wallId?, segment: {length, ...} } — shared by
+  // getDraftDoor (live preview) and the submit handler (fit-length
+  // validation), so both agree on exactly what "the selected wall" means.
+  function resolveSelectedWall() {
+    const val = doorWallSelect.value;
+    if (val === '') return null;
+    if (val.startsWith('int:')) {
+      const wallId = val.slice(4);
+      const w = (store.data.walls || []).find((ww) => ww.id === wallId);
+      if (!w) return null;
+      const length = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 0.0001;
+      return { wallKind: 'interior', wallId, segment: { length } };
+    }
+    const wh = store.data.warehouse;
+    const shellWalls = wh && wh.shape ? Model.wallSegments(wh.shape) : [];
+    const wall = shellWalls[Number(val)];
+    if (!wall) return null;
+    return { wallKind: 'shell', wallIndex: Number(val), segment: wall };
   }
 
   // Reads the current (unsaved) Doors form values into a plain door-like
   // object, for the live plan-preview highlight as the user fills it in.
   function getDraftDoor() {
-    if (doorWallSelect.value === '') return null;
-    return {
-      wallIndex: Number(doorWallSelect.value),
+    const sel = resolveSelectedWall();
+    if (!sel) return null;
+    const draft = {
+      wallKind: sel.wallKind,
       offset: Number(document.getElementById('doorOffset').value) || 0,
       width: Number(document.getElementById('doorWidth').value) || 0.1,
       height: Number(document.getElementById('doorHeight').value) || 0.1,
       type: doorTypeSelect.value,
       label: document.getElementById('doorLabel').value || 'Door'
     };
+    if (sel.wallKind === 'interior') draft.wallId = sel.wallId;
+    else draft.wallIndex = sel.wallIndex;
+    return draft;
   }
 
   function renderDoorsPlanPreview() {
@@ -819,7 +1005,7 @@
     renderWallOptions();
     document.getElementById('doorLabel').value = d.label;
     doorTypeSelect.value = d.type;
-    doorWallSelect.value = d.wallIndex;
+    doorWallSelect.value = d.wallKind === 'interior' ? `int:${d.wallId}` : String(d.wallIndex);
     document.getElementById('doorOffset').value = d.offset;
     document.getElementById('doorWidth').value = d.width;
     document.getElementById('doorHeight').value = d.height;
@@ -858,22 +1044,25 @@
   formDoor.addEventListener('submit', (e) => {
     e.preventDefault();
     try {
+      const sel = resolveSelectedWall();
+      if (!sel) { alert('Pick a wall first.'); return; }
+      const offset = Number(document.getElementById('doorOffset').value) || 0;
+      const width = Number(document.getElementById('doorWidth').value) || 0;
+      if (offset + width > sel.segment.length + 0.001) {
+        const wallLabel = sel.wallKind === 'interior' ? 'This wall' : `Wall ${sel.wallIndex + 1}`;
+        alert(`This door doesn't fit — ${wallLabel} is only ${sel.segment.length.toFixed(1)} m long from that starting position.`);
+        return;
+      }
       const payload = {
         label: document.getElementById('doorLabel').value,
         type: doorTypeSelect.value,
-        wallIndex: doorWallSelect.value,
+        wallKind: sel.wallKind,
+        wallIndex: sel.wallIndex,
+        wallId: sel.wallId,
         offset: document.getElementById('doorOffset').value,
         width: document.getElementById('doorWidth').value,
         height: document.getElementById('doorHeight').value
       };
-      const wh = store.data.warehouse;
-      const walls = wh && wh.shape ? Model.wallSegments(wh.shape) : [];
-      const wall = walls[Number(payload.wallIndex)];
-      if (!wall) { alert('Pick a wall first.'); return; }
-      if (Number(payload.offset) + Number(payload.width) > wall.length + 0.001) {
-        alert(`This door doesn't fit — Wall ${wall.index + 1} is only ${wall.length.toFixed(1)} m long from that starting position.`);
-        return;
-      }
       if (editingDoorId) {
         store.updateDoor(editingDoorId, payload);
         exitDoorEditMode();
@@ -903,15 +1092,22 @@
     const tbody = document.querySelector('#doorsTable tbody');
     tbody.innerHTML = '';
     const wh = store.data.warehouse;
-    const walls = wh && wh.shape ? Model.wallSegments(wh.shape) : [];
+    const shellWalls = wh && wh.shape ? Model.wallSegments(wh.shape) : [];
     store.data.doors.forEach((d) => {
-      const wall = walls[d.wallIndex];
+      let wallLabel;
+      if (d.wallKind === 'interior') {
+        const w = (store.data.walls || []).find((ww) => ww.id === d.wallId);
+        wallLabel = w ? escapeHtml(w.name) : 'Interior wall (missing)';
+      } else {
+        const wall = shellWalls[d.wallIndex];
+        wallLabel = wall ? `Wall ${d.wallIndex + 1}` : `Wall ${d.wallIndex + 1} (missing)`;
+      }
       const tr = document.createElement('tr');
       tr.dataset.id = d.id;
       tr.innerHTML = `
         <td class="name-cell" data-act="view" data-id="${d.id}" title="Click to edit"><span class="swatch" style="background:${DOOR_COLORS[d.type]}"></span>${escapeHtml(d.label)}</td>
         <td>${d.type === 'garage' ? 'Garage / Dock' : 'Regular'}</td>
-        <td>${wall ? `Wall ${d.wallIndex + 1}` : `Wall ${d.wallIndex + 1} (missing)`}</td>
+        <td>${wallLabel}</td>
         <td>${d.offset} m</td>
         <td>${d.width} m</td>
         <td>${d.height} m</td>
@@ -1949,6 +2145,7 @@
     renderMezzanineGate();
     renderZonesGate();
     renderZonesTable();
+    renderWallsTable();
     renderDoorsGate();
     renderWallOptions();
     renderDoorsTable();
@@ -1966,7 +2163,7 @@
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
     if (currentTab === 'doors') renderDoorsPlanPreview();
-    if (currentTab === 'zones') renderZonesPlanPreview();
+    if (currentTab === 'zones') { renderZonesPlanPreview(); renderWallsPlanPreview(); }
     if (currentTab === 'racks') renderRacksPlanPreview();
     // Runs last — after every table above has rebuilt its rows (and thus its
     // Edit/Delete/Convert buttons) from scratch — so the disabled state

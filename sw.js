@@ -1,5 +1,5 @@
 // sw.js — basic offline app-shell cache for Dynamic Spatial Model Builder PWA
-const CACHE_NAME = 'warehouse-builder-v36';
+const CACHE_NAME = 'warehouse-builder-v37';
 const APP_SHELL = [
   './',
   './index.html',

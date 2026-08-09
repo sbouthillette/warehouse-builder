@@ -74,7 +74,19 @@ function emptyProject() {
     //     door opening's start (near) edge.
     //   width/height — door opening size (m).
     //   type — 'garage' (wide/tall drive-in or dock door) or 'regular' (pedestrian door).
+    //   wallKind — 'shell' (default; door sits on a warehouse-shell edge,
+    //     addressed by wallIndex as above) or 'interior' (door sits on one of
+    //     the walls below, addressed by wallId instead — offset/width/height
+    //     mean the same thing either way).
     doors: [],
+    // walls: [{ id, name, x1, y1, x2, y2, thickness, height }] — a straight
+    // interior partition wall, independent of the warehouse shell outline.
+    // (x1,y1)-(x2,y2) is the wall's centerline in warehouse space (m);
+    // thickness/height are also metres, matching the zone/obstacle
+    // convention (building-scale geometry rather than mm-scale racking
+    // components). Doors can be mounted on an interior wall the same way
+    // they mount on a shell wall — see doors.wallKind above.
+    walls: [],
     // inventory: [{ id, code, rackId, bayIndex, levelIndex, locationIndex,
     //   lpn, contents: [{ partNumber, quantity }] }] — one entry per
     //   OCCUPIED discrete storage location (see Store.listLocations()/
@@ -177,13 +189,24 @@ function wallSegments(shape) {
 }
 
 // Resolves a door's opening to actual warehouse-space (m) start/end points
-// along its wall, clamped to the wall's current length (in case the shell
-// was edited after the door was placed). Returns null if the door's wall no
-// longer exists. `angle` is the wall's direction (radians), reused for
-// rotating the door's visual representation in the 3D view.
-function doorPoints(shape, door) {
-  const walls = wallSegments(shape);
-  const wall = walls[door.wallIndex];
+// along its wall, clamped to the wall's current length (in case the shell/
+// wall was edited after the door was placed). Returns null if the door's
+// wall no longer exists. `angle` is the wall's direction (radians), reused
+// for rotating the door's visual representation in the 3D view. `walls` is
+// the project's interior-wall list — only consulted when
+// door.wallKind === 'interior'; shell-mounted doors (the default) resolve
+// against `shape` exactly as before.
+function doorPoints(shape, walls, door) {
+  let wall;
+  if (door.wallKind === 'interior') {
+    const w = (walls || []).find((ww) => ww.id === door.wallId);
+    if (!w) return null;
+    const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+    const length = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+    wall = { p1: { x: w.x1, y: w.y1 }, p2: { x: w.x2, y: w.y2 }, length, angle: Math.atan2(dy, dx) };
+  } else {
+    wall = wallSegments(shape)[door.wallIndex];
+  }
   if (!wall) return null;
   const len = wall.length || 0.0001;
   const t0 = Math.min(Math.max(door.offset, 0), len);
@@ -199,16 +222,39 @@ function doorPoints(shape, door) {
 }
 
 // Upgrades/sanitizes a door record's field types — used both for freshly
-// submitted form payloads and for legacy saved projects that predate a field.
+// submitted form payloads and for legacy saved projects that predate a
+// field. Legacy records have no wallKind at all, which correctly defaults
+// to 'shell' — their existing wallIndex keeps meaning exactly what it did
+// before interior walls existed.
 function normalizeDoor(d) {
   if (!d) return d;
-  d.wallIndex = Number(d.wallIndex) || 0;
+  d.wallKind = d.wallKind === 'interior' ? 'interior' : 'shell';
+  if (d.wallKind === 'interior') {
+    d.wallId = d.wallId || null;
+  } else {
+    d.wallIndex = Number(d.wallIndex) || 0;
+  }
   d.offset = Number(d.offset) || 0;
   d.width = Number(d.width) || 1;
   d.height = Number(d.height) || 2.1;
   d.type = d.type === 'garage' ? 'garage' : 'regular';
   d.label = d.label || (d.type === 'garage' ? 'Garage Door' : 'Door');
   return d;
+}
+
+// Upgrades/sanitizes an interior wall record's field types. Endpoints
+// (x1,y1)-(x2,y2) are the wall's centerline in warehouse space (m);
+// thickness/height are metres too, matching the zone/obstacle convention.
+function normalizeWall(w) {
+  if (!w) return w;
+  w.x1 = Number(w.x1) || 0;
+  w.y1 = Number(w.y1) || 0;
+  w.x2 = Number(w.x2) || 0;
+  w.y2 = Number(w.y2) || 0;
+  w.thickness = Math.max(Number(w.thickness) || 0.15, 0.02);
+  w.height = Math.max(Number(w.height) || 3, 0.1);
+  w.name = w.name || 'Interior Wall';
+  return w;
 }
 
 // ---- Rack placement / picking-side geometry helpers -----------------------
@@ -335,6 +381,26 @@ function zoneFullyInsidePolygon(z, polygon) {
     return circleFullyInsidePolygon(center, r, polygon);
   }
   return rectFullyInsidePolygon(zoneCorners(z), polygon);
+}
+
+// True if an interior wall's centerline lies entirely within the warehouse
+// shell: both endpoints inside (or on the boundary of) the polygon, and the
+// centerline itself doesn't cross a shell edge — the same two-part check as
+// rectFullyInsidePolygon, needed because a straight line between two
+// interior points can still cut across a notch in a concave (L-shaped)
+// shell without either endpoint leaving it.
+function wallFullyInsidePolygon(w, polygon) {
+  if (!polygon || polygon.length < 3) return false;
+  const eps = 0.01;
+  const p1 = { x: Number(w.x1) || 0, y: Number(w.y1) || 0 };
+  const p2 = { x: Number(w.x2) || 0, y: Number(w.y2) || 0 };
+  const inside = (p) => pointInPolygon(p, polygon) || pointNearPolygonBoundary(p, polygon, eps);
+  if (!inside(p1) || !inside(p2)) return false;
+  const polyEdges = wallSegments(polygon);
+  for (const edge of polyEdges) {
+    if (segmentsIntersect(p1, p2, edge.p1, edge.p2)) return false;
+  }
+  return true;
 }
 
 // Resolves a rack's chosen picking side ('north'/'south'/'east'/'west' —
@@ -633,6 +699,7 @@ class Store {
     this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
     this.data.zones = (this.data.zones || []).map(normalizeZone);
+    this.data.walls = (this.data.walls || []).map(normalizeWall);
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
     this.data.locationBarcodes = Array.isArray(this.data.locationBarcodes) ? this.data.locationBarcodes : [];
@@ -704,6 +771,7 @@ class Store {
     this.data.racks = (this.data.racks || []).map(normalizeRack);
     this.data.doors = (this.data.doors || []).map(normalizeDoor);
     this.data.zones = (this.data.zones || []).map(normalizeZone);
+    this.data.walls = (this.data.walls || []).map(normalizeWall);
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
     this.data.locationBarcodes = Array.isArray(this.data.locationBarcodes) ? this.data.locationBarcodes : [];
@@ -724,14 +792,19 @@ class Store {
       // section) — preserved here so re-saving the shell form doesn't wipe it.
       mezzanine: normalizeMezzanine(this.data.warehouse?.mezzanine)
     };
-    // Keep doors valid if the shell was edited: drop any whose wall no
-    // longer exists (fewer edges than before), and clamp position/width so
-    // they still fit within a wall that got shorter.
-    const walls = wallSegments(this.data.warehouse.shape);
+    // Keep shell-mounted doors valid if the shell was edited: drop any whose
+    // wall no longer exists (fewer edges than before), and clamp position/
+    // width so they still fit within a wall that got shorter. Interior-wall
+    // doors are untouched here — they're only affected by their own wall
+    // being edited/deleted (see updateWall/deleteWall below), and
+    // doorPoints() already clamps their offset/width live against the
+    // wall's current length regardless.
+    const shellWalls = wallSegments(this.data.warehouse.shape);
     this.data.doors = (this.data.doors || [])
-      .filter((d) => d.wallIndex < walls.length)
+      .filter((d) => d.wallKind === 'interior' || d.wallIndex < shellWalls.length)
       .map((d) => {
-        const wall = walls[d.wallIndex];
+        if (d.wallKind === 'interior') return d;
+        const wall = shellWalls[d.wallIndex];
         d.width = Math.min(d.width, wall.length);
         const maxOffset = Math.max(0, wall.length - d.width);
         d.offset = Math.min(Math.max(d.offset, 0), maxOffset);
@@ -746,6 +819,7 @@ class Store {
     this.data.zones = [];
     this.data.racks = [];
     this.data.doors = [];
+    this.data.walls = [];
     this.notify();
   }
 
@@ -819,14 +893,18 @@ class Store {
   }
 
   // ---- Doors ---------------------------------------------------------
-  // wallIndex references an edge of the current warehouse shape (see
-  // wallSegments()); offset/width/height are in metres.
+  // wallKind picks which wall list offset/width are measured against:
+  // 'shell' (default) — wallIndex references an edge of the current
+  // warehouse shape (see wallSegments()); 'interior' — wallId references
+  // one of this.data.walls below. offset/width/height are in metres either way.
   addDoor(door) {
     if (this.isLocked()) return null;
     const d = normalizeDoor({
       id: uid('door'),
       label: door.label,
+      wallKind: door.wallKind,
       wallIndex: door.wallIndex,
+      wallId: door.wallId,
       offset: door.offset,
       width: door.width,
       height: door.height,
@@ -848,6 +926,41 @@ class Store {
   deleteDoor(id) {
     if (this.isLocked()) return;
     this.data.doors = this.data.doors.filter((d) => d.id !== id);
+    this.notify();
+  }
+
+  // ---- Interior Walls --------------------------------------------------
+  // Straight partition walls inside the shell, independent of its outline.
+  // Endpoints/thickness/height are in metres — see the `walls` doc comment
+  // in emptyProject() above.
+  addWall(wall) {
+    if (this.isLocked()) return null;
+    const w = normalizeWall({
+      id: uid('wall'),
+      name: wall.name,
+      x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2,
+      thickness: wall.thickness,
+      height: wall.height
+    });
+    this.data.walls.push(w);
+    this.notify();
+    return w;
+  }
+
+  updateWall(id, patch) {
+    if (this.isLocked()) return;
+    const w = this.data.walls.find((ww) => ww.id === id);
+    if (!w) return;
+    Object.assign(w, normalizeWall({ ...w, ...patch }));
+    this.notify();
+  }
+
+  deleteWall(id) {
+    if (this.isLocked()) return;
+    this.data.walls = this.data.walls.filter((w) => w.id !== id);
+    // Drop any doors that were mounted on this wall — same invalidation
+    // approach used when the shell itself changes (setWarehouse above).
+    this.data.doors = this.data.doors.filter((d) => !(d.wallKind === 'interior' && d.wallId === id));
     this.notify();
   }
 
@@ -1092,5 +1205,6 @@ window.WarehouseModel = {
   computeLevelElevations, wallSegments, doorPoints, normalizeDoor, normalizeZone,
   pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge,
   generateLocationLabels, normalizeBayLevel, normalizeMezzanine,
-  circleFullyInsidePolygon, zoneCorners, zoneFullyInsidePolygon
+  circleFullyInsidePolygon, zoneCorners, zoneFullyInsidePolygon,
+  normalizeWall, wallFullyInsidePolygon
 };

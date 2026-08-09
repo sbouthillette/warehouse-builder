@@ -5,10 +5,10 @@
 // Exposes a reusable factory (window.PlanView.create) so multiple canvases
 // can each show the full warehouse plan with their own independent pan/zoom
 // state: the main "2D Plan" tab, plus small live-preview canvases embedded
-// in the Doors and Zones & Obstacles tabs. Those preview instances can also
-// be given a "draft" item (a door or zone/obstacle not yet saved, reflecting
-// the current form values) to highlight, via render({door: ...}) or
-// render({zone: ...}).
+// in the Doors, Zones & Obstacles, and Interior Walls tabs. Those preview
+// instances can also be given a "draft" item (a door, zone/obstacle, or
+// wall not yet saved, reflecting the current form values) to highlight, via
+// render({door: ...}), render({zone: ...}), or render({wall: ...}).
 
 (function () {
   // Standard door colors — kept in sync with the same constants in main.js
@@ -147,6 +147,70 @@
       ctx.font = '12px sans-serif';
       ctx.fillText(`Mezzanine (${mz.heightMm}mm)`, Math.min(a.sx, b.sx), Math.min(a.sy, b.sy) - 6);
       ctx.restore();
+    }
+
+    // Interior walls render as a solid gray stroke, thick enough on-screen
+    // to reflect the wall's real thickness (clamped to a legible minimum at
+    // low zoom, same treatment as everything else that scales with view.scale).
+    // Shown on every plan view (not just the Walls sub-tab) since — like
+    // doors — they're structural context relevant everywhere.
+    const WALL_COLOR = '#5f5e5a'; // ink-secondary
+    function drawWalls(walls) {
+      if (!walls || !walls.length) return;
+      walls.forEach((w) => {
+        const a = worldToScreen(w.x1, w.y1);
+        const b = worldToScreen(w.x2, w.y2);
+        ctx.strokeStyle = WALL_COLOR;
+        ctx.lineWidth = Math.max(w.thickness * view.scale, 3);
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+        ctx.lineCap = 'butt';
+
+        const len = Math.hypot(b.sx - a.sx, b.sy - a.sy);
+        if (len >= 40) {
+          ctx.fillStyle = '#fff';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.save();
+          ctx.translate((a.sx + b.sx) / 2, (a.sy + b.sy) / 2);
+          ctx.rotate(Math.atan2(b.sy - a.sy, b.sx - a.sx));
+          ctx.fillText(w.name, 0, 3);
+          ctx.restore();
+          ctx.textAlign = 'left';
+        }
+      });
+    }
+
+    // Highlights an in-progress (unsaved) wall from the Interior Walls form.
+    // `draft.valid` (whether it fits fully inside the warehouse shell —
+    // resolved by the caller via Model.wallFullyInsidePolygon) recolors it
+    // red, same treatment as drawDraftZone/drawDraftRack.
+    function drawDraftWall(draft) {
+      if (!draft) return;
+      const invalid = draft.valid === false;
+      const a = worldToScreen(draft.x1, draft.y1);
+      const b = worldToScreen(draft.x2, draft.y2);
+      const color = invalid ? '#C0392B' : WALL_COLOR;
+
+      ctx.strokeStyle = hexToRgba(color, 0.35);
+      ctx.lineWidth = Math.max(draft.thickness * view.scale, 3) + 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+
+      ctx.strokeStyle = invalid ? '#C0392B' : '#E2572E';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineCap = 'butt';
+
+      if (invalid) {
+        ctx.fillStyle = '#C0392B';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Outside warehouse shell', (a.sx + b.sx) / 2, Math.min(a.sy, b.sy) - 10);
+        ctx.textAlign = 'left';
+      }
     }
 
     // Flat zones (Storage/Staging/Picking/Dock/Office/Other) render as a
@@ -475,10 +539,10 @@
     // Draws each door as a thick colored overlay on its wall segment, with a
     // small perpendicular tick at each jamb (like a door-opening symbol) and a
     // label once zoomed in enough for it to be legible.
-    function drawDoors(doors, wh) {
+    function drawDoors(doors, wh, walls) {
       if (!doors || !doors.length) return;
       doors.forEach((d) => {
-        const dp = window.WarehouseModel.doorPoints(wh.shape, d);
+        const dp = window.WarehouseModel.doorPoints(wh.shape, walls, d);
         if (!dp) return;
         const a = worldToScreen(dp.start.x, dp.start.y);
         const b = worldToScreen(dp.end.x, dp.end.y);
@@ -519,9 +583,9 @@
 
     // Highlights an in-progress (unsaved) door from the Doors form, so the
     // user sees exactly where it will land on the wall before clicking Add.
-    function drawDraftDoor(wh, draft) {
+    function drawDraftDoor(wh, walls, draft) {
       if (!draft || !wh) return;
-      const dp = window.WarehouseModel.doorPoints(wh.shape, draft);
+      const dp = window.WarehouseModel.doorPoints(wh.shape, walls, draft);
       if (!dp) return;
       const a = worldToScreen(dp.start.x, dp.start.y);
       const b = worldToScreen(dp.end.x, dp.end.y);
@@ -542,11 +606,11 @@
       ctx.lineCap = 'butt';
     }
 
-    // `draft` (optional) is { door: {...} }, { zone: {...} }, or { rack: {...} }
-    // — the current unsaved form state from the Doors / Zones & Obstacles /
-    // Racks & Aisles tabs, highlighted on top of the normal plan. Passing
-    // nothing keeps whatever draft was last set (so pan/zoom/resize
-    // re-renders don't lose the highlight).
+    // `draft` (optional) is { door: {...} }, { zone: {...} }, { wall: {...} },
+    // or { rack: {...} } — the current unsaved form state from the Doors /
+    // Zones & Obstacles / Interior Walls / Racks & Aisles tabs, highlighted
+    // on top of the normal plan. Passing nothing keeps whatever draft was
+    // last set (so pan/zoom/resize re-renders don't lose the highlight).
     function render(draft) {
       if (draft !== undefined) lastDraft = draft;
       resizeCanvas();
@@ -570,6 +634,8 @@
       drawWarehouse(wh);
       drawZones(store.data.zones);
       if (lastDraft && lastDraft.zone) drawDraftZone(lastDraft.zone);
+      drawWalls(store.data.walls);
+      if (lastDraft && lastDraft.wall) drawDraftWall(lastDraft.wall);
       const mz = wh.mezzanine;
       drawMezzanineFootprint(mz);
       // Only racks on the currently-selected floor are shown/editable here —
@@ -581,8 +647,8 @@
       const racksOnFloor = store.data.racks.filter((r) => (r.floor || 'ground') === view.floor);
       drawRacks(racksOnFloor, store);
       if (lastDraft && lastDraft.rack) drawDraftRack(lastDraft.rack);
-      drawDoors(store.data.doors, wh);
-      if (lastDraft && lastDraft.door) drawDraftDoor(wh, lastDraft.door);
+      drawDoors(store.data.doors, wh, store.data.walls);
+      if (lastDraft && lastDraft.door) drawDraftDoor(wh, store.data.walls, lastDraft.door);
       drawScaleBar();
     }
 
@@ -686,6 +752,8 @@
   if (doorsCanvas) window.DoorsPlanView = createPlanView(doorsCanvas);
   const zonesCanvas = document.getElementById('zonesPlanCanvas');
   if (zonesCanvas) window.ZonesPlanView = createPlanView(zonesCanvas);
+  const wallsCanvas = document.getElementById('wallsPlanCanvas');
+  if (wallsCanvas) window.WallsPlanView = createPlanView(wallsCanvas);
   const racksCanvas = document.getElementById('racksPlanCanvas');
   if (racksCanvas) window.RacksPlanView = createPlanView(racksCanvas);
 })();

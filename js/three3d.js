@@ -308,6 +308,44 @@ function buildZones(zones) {
   });
 }
 
+// Renders each interior wall as a solid extruded box at its configured
+// thickness/height — unlike the shell's wireframe-only treatment (see
+// buildWarehouseShell above), a solid partition reads more clearly as a
+// physical barrier, and there's no rack/zone visibility concern here since
+// interior walls are thin and typically few in number.
+const WALL_COLOR_3D = 0x8a8578;
+function buildWalls(walls) {
+  if (!walls || !walls.length) return;
+  const mat = new THREE.MeshStandardMaterial({ color: WALL_COLOR_3D, metalness: 0.05, roughness: 0.85 });
+  walls.forEach((w) => {
+    const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.01) return;
+    const cx = (w.x1 + w.x2) / 2, cy = (w.y1 + w.y2) / 2;
+    // Same rotation convention as buildDoors below (mesh.rotation.y = angle,
+    // no negation) — both resolve a warehouse-space direction the same way.
+    const angle = Math.atan2(dy, dx);
+    const geo = new THREE.BoxGeometry(length, w.height, w.thickness);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(cx, w.height / 2, -cy);
+    mesh.rotation.y = angle;
+    group.add(mesh);
+
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: 0x3a3833 })
+    );
+    edges.position.copy(mesh.position);
+    edges.rotation.copy(mesh.rotation);
+    group.add(edges);
+
+    const label = makeTextSprite(w.name);
+    label.position.set(cx, w.height + 0.3, -cy);
+    label.scale.set(2, 0.5, 1);
+    group.add(label);
+  });
+}
+
 // Standard door colors — kept in sync with the same constants in main.js
 // (table swatches) and canvas2d.js (2D plan).
 const DOOR_COLORS = { garage: 0x7C8892, regular: 0x8B5E34 };
@@ -382,13 +420,16 @@ function buildMezzanineDeck(mz) {
 }
 
 // Renders each door as a colored panel set into its wall, sized to the
-// door's width/height and rotated to match the wall's direction. Since the
-// warehouse shell itself is a wireframe outline (no solid walls), this reads
-// as a colored opening/panel along the wall line rather than a real cutout.
-function buildDoors(doors, wh) {
+// door's width/height and rotated to match the wall's direction. Shell
+// doors read as a colored opening/panel along the wireframe wall line
+// (there's no solid shell wall to actually cut a hole in); interior-wall
+// doors get the same panel treatment floating in front of the solid wall
+// box built by buildWalls above (no real cutout there either, for the same
+// reason a full CSG boolean is out of scope for this tool).
+function buildDoors(doors, wh, walls) {
   if (!doors || !doors.length) return;
   doors.forEach((d) => {
-    const dp = window.WarehouseModel.doorPoints(wh.shape, d);
+    const dp = window.WarehouseModel.doorPoints(wh.shape, walls, d);
     if (!dp) return;
     const mat = new THREE.MeshStandardMaterial({
       color: DOOR_COLORS[d.type] || DOOR_COLORS.regular,
@@ -783,9 +824,10 @@ function render(store) {
   if (!wh || !wh.shape || wh.shape.length < 3) return;
   buildWarehouseShell(wh);
   buildZones(store.data.zones);
+  buildWalls(store.data.walls);
   buildMezzanineDeck(wh.mezzanine);
   buildRacks(store.data.racks, store);
-  buildDoors(store.data.doors, wh);
+  buildDoors(store.data.doors, wh, store.data.walls);
   resetView(store);
 }
 

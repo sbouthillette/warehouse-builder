@@ -59,7 +59,7 @@
     <nav class="tabs">
       <button class="tab-btn active" data-tab="warehouse">1. Warehouse Shell</button>
       <button class="tab-btn" data-tab="doors">2. Doors</button>
-      <button class="tab-btn" data-tab="zones">3. Zones &amp; Obstacles</button>
+      <button class="tab-btn" data-tab="zones">3. Zones, Obstacles &amp; Walls</button>
       <button class="tab-btn" data-tab="bays">4. Bay Builder</button>
       <button class="tab-btn" data-tab="racks">5. Racks &amp; Aisles</button>
       <button class="tab-btn" data-tab="plan2d">6. 2D Plan</button>
@@ -180,7 +180,7 @@
 
       <!-- TAB 2: ZONES & OBSTACLES -->
       <section id="tab-zones" class="tab-panel">
-        <h2>Zones &amp; Obstacles</h2>
+        <h2>Zones, Obstacles &amp; Walls</h2>
         <p class="hint">Carve the warehouse shell into functional zones (storage, staging, picking, dock, office...) — flat, ground-level areas — or mark obstacles (columns, fixed equipment) that pickers need to route around — raised, with a height. The plan on the left updates live as you fill in the form.</p>
         <div id="zonesGate" class="gate-message"></div>
         <div id="zonesUI" hidden>
@@ -257,13 +257,67 @@
               </form>
             </div>
           </div>
+
+          <h2 class="section-heading">Interior Walls</h2>
+          <p class="hint">Straight partition walls inside the shell — draw one from a start point to an end point, set its thickness and height, then place doors on it from the Doors tab (Wall dropdown includes both the shell and every interior wall). The plan updates live as you fill in the form.</p>
+          <div class="split-editor">
+            <div class="split-main-col">
+              <div class="split-preview-col">
+                <div class="canvas-toolbar canvas-toolbar-right">
+                  <button type="button" id="btnZoomOutWallsPlan" class="btn btn-ghost">Zoom Out</button>
+                  <button type="button" id="btnZoomInWallsPlan" class="btn btn-ghost">Zoom In</button>
+                  <button type="button" id="btnFitWallsPlan" class="btn btn-ghost">Fit to View</button>
+                </div>
+                <div class="canvas-wrap">
+                  <canvas id="wallsPlanCanvas"></canvas>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table id="wallsTable" class="data-table">
+                  <thead><tr><th>Name</th><th>Start (X,Y)</th><th>End (X,Y)</th><th>Thickness</th><th>Height</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="split-params-col">
+              <form id="formWall" class="card form-grid">
+                <label>Wall Name
+                  <input type="text" id="wallName" placeholder="Office Partition" required />
+                </label>
+                <label>Start X (m)
+                  <input type="number" id="wallX1" step="0.1" value="0" required />
+                </label>
+                <label>Start Y (m)
+                  <input type="number" id="wallY1" step="0.1" value="0" required />
+                </label>
+                <label>End X (m)
+                  <input type="number" id="wallX2" step="0.1" value="5" required />
+                </label>
+                <label>End Y (m)
+                  <input type="number" id="wallY2" step="0.1" value="0" required />
+                </label>
+                <label>Thickness (m)
+                  <input type="number" id="wallThickness" min="0.02" step="0.01" value="0.15" required />
+                </label>
+                <label>Height (m)
+                  <input type="number" id="wallHeightInput" min="0.1" step="0.1" value="3" required />
+                </label>
+                <div class="form-actions full-row">
+                  <button type="submit" class="btn btn-primary">Add Wall</button>
+                  <button type="button" id="btnCancelWallEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       </section>
 
       <!-- TAB 2.5: DOORS -->
       <section id="tab-doors" class="tab-panel">
         <h2>Doors</h2>
-        <p class="hint">Place garage/dock doors and regular (pedestrian) doors on the warehouse walls. Position is measured from the wall's starting corner, walking in the direction the outline was traced. The plan on the left updates live as you fill in the form, so you can see exactly where the door will land.</p>
+        <p class="hint">Place garage/dock doors and regular (pedestrian) doors on the warehouse shell walls or on any interior wall (Tab 3). Position is measured from the wall's starting point. The plan on the left updates live as you fill in the form, so you can see exactly where the door will land.</p>
         <div id="doorsGate" class="gate-message"></div>
         <div id="doorsUI" hidden>
           <div class="split-editor">
