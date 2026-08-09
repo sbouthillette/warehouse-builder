@@ -356,6 +356,14 @@ h2 {
   line-height: 1.5;
   color: var(--ink-secondary);
 }
+/* An author-stylesheet display value on any selector (however unspecific)
+   always beats the user-agent [hidden] { display: none } rule, since origin
+   order — not specificity — decides UA vs. author wins. Without this, any
+   label toggled to `hidden` inside a .form-grid (e.g. Zones/Obstacles/Walls'
+   Kind-dependent fields) stays visibly flexed instead of disappearing. */
+.form-grid label[hidden] {
+  display: none;
+}
 
 .form-grid input, .form-grid select {
   background: rgba(255, 255, 255, 0.7);
