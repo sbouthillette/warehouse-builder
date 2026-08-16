@@ -26,6 +26,9 @@ Files involved:
   cookie, and re-checks the email against `ALLOWED_EMAILS` every time (so
   removing someone from the list revokes their access immediately, even if
   their session cookie hasn't expired).
+- `api/auth/me.js` — tells the front end the signed-in email and whether
+  it's on `ADMIN_EMAILS`; `js/main.js` uses this to show/hide the
+  Export JSON / Import JSON controls in the top bar.
 
 None of this requires a new npm dependency or a database change — it's all
 plain Node/Web APIs.
@@ -52,9 +55,15 @@ In your Vercel project → **Settings → Environment Variables**, add both
 |---|---|
 | `ALLOWED_EMAILS` | comma-separated list of addresses to let in, e.g. `alice@example.com,bob@example.com` |
 | `SESSION_SECRET` | from step 1 |
+| `ADMIN_EMAILS` | comma-separated list of addresses allowed to see Export JSON / Import JSON, e.g. `sebastien.bouthillette@spatialisos.com`. Optional — leave unset and nobody sees those controls. |
 
 Matching is case-insensitive and whitespace around each address is
-trimmed, so `Alice@Example.com, bob@example.com` works fine.
+trimmed, so `Alice@Example.com, bob@example.com` works fine — same for
+`ADMIN_EMAILS`.
+
+**Every address in `ADMIN_EMAILS` must also be in `ALLOWED_EMAILS`** —
+admin status only matters once someone can sign in at all; it doesn't
+grant sign-in access by itself.
 
 ## 3. Deploy and test
 
@@ -99,3 +108,9 @@ recover.
   past this gate.
 - It does **not** verify identity. See the callout at the top of this
   document.
+- The `ADMIN_EMAILS` Export/Import restriction is a UI convenience, not a
+  data-access boundary. Every signed-in user (admin or not) can already
+  see and edit warehouse data through the app itself — hiding the JSON
+  export/import buttons only removes the one-click way to grab or
+  overwrite the raw project file; it doesn't further restrict what data a
+  non-admin can reach.

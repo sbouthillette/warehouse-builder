@@ -71,6 +71,26 @@
     e.target.value = '';
   });
 
+  // Export/Import JSON (the whole project file) is admin-only — see
+  // ADMIN_EMAILS in api/auth/me.js. Everyone else who's signed in can still
+  // see and edit warehouse data normally; this just hides the raw
+  // project-file shortcut. This is a UI convenience, not a hard security
+  // boundary — the underlying data is already visible to any signed-in user
+  // through the app itself.
+  (async function applyAdminOnlyUI() {
+    let isAdmin = false;
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) isAdmin = !!(await res.json()).isAdmin;
+    } catch (err) {
+      console.error('Could not determine admin status', err);
+    }
+    if (!isAdmin) {
+      document.getElementById('btnExport').hidden = true;
+      document.getElementById('fileImport').closest('label').hidden = true;
+    }
+  })();
+
   // ---------------- Save status indicator ----------------
   const saveStatusEl = document.getElementById('saveStatus');
   store.onSaveState((state) => {
