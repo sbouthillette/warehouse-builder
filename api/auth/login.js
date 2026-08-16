@@ -1,17 +1,18 @@
 // api/auth/login.js — the whole sign-in gate: a plain HTML form asking for
-// an email address, checked against a static allowlist (ALLOWED_EMAILS).
+// an email address, checked against the `allowed_emails` table (see
+// sql/allowed_emails.sql), managed from the in-app "Manage Access" panel.
 //
 // IMPORTANT: this does NOT verify that the visitor actually owns the email
 // they type in — there's no confirmation link, no password, no external
 // identity provider. It only checks "is this address on the list". That's
 // a deliberate simplicity/security tradeoff: no OAuth client to register,
-// no third-party dependency, nothing to configure beyond an env var — in
-// exchange for weaker guarantees than a real sign-in. Anyone who *knows*
-// an allowed address can type it in and get a session as that address.
-// Only rely on this if the people who might abuse that are already people
-// you trust (e.g. a small internal team), not as a defense against a
-// motivated outside attacker.
+// no third-party dependency — in exchange for weaker guarantees than a
+// real sign-in. Anyone who *knows* an allowed address can type it in and
+// get a session as that address. Only rely on this if the people who
+// might abuse that are already people you trust (e.g. a small internal
+// team), not as a defense against a motivated outside attacker.
 import { signToken, SESSION_COOKIE, SESSION_MAX_AGE } from '../../lib/session.js';
+import { getAllowlist } from '../../lib/allowlist.js';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,13 +23,6 @@ function escapeHtml(s) {
 function safeNext(raw) {
   const next = typeof raw === 'string' ? raw : '/';
   return next.startsWith('/') && !next.startsWith('//') ? next : '/';
-}
-
-function parseAllowedEmails(raw) {
-  return String(raw || '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -60,12 +54,12 @@ function formPage({ next, error }) {
 
 export default async function handler(req, res) {
   const secret = process.env.SESSION_SECRET;
-  const allowedEmails = parseAllowedEmails(process.env.ALLOWED_EMAILS);
 
-  if (!secret || allowedEmails.length === 0) {
+  if (!secret) {
     res.status(500).send(
-      "Email sign-in is not configured yet. Set ALLOWED_EMAILS (a comma-separated list of " +
-      "addresses to let in) and SESSION_SECRET in the Vercel project's Environment Variables, then redeploy."
+      "Email sign-in is not configured yet. Set SESSION_SECRET in the Vercel project's " +
+      "Environment Variables, then redeploy. (The access list itself now lives in the " +
+      "database — see sql/allowed_emails.sql — not an env var.)"
     );
     return;
   }
@@ -88,7 +82,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (!allowedEmails.includes(email.toLowerCase())) {
+    let allowlist;
+    try {
+      // A fresh sign-in should see the just-edited list, not a stale cache.
+      allowlist = await getAllowlist({ fresh: true });
+    } catch (err) {
+      res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(formPage({ next, error: 'Could not check the access list right now (database unreachable). Try again in a moment.' }));
+      return;
+    }
+
+    if (!allowlist.has(email.toLowerCase())) {
       res.status(403).setHeader('Content-Type', 'text/html; charset=utf-8');
       res.send(formPage({
         next,

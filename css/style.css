@@ -787,6 +787,66 @@ h2 {
   display: block;
 }
 
+/* ---------------- Manage Access modal ---------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8vh var(--sp-4) var(--sp-4);
+  background: rgba(26, 26, 24, 0.45);
+}
+.modal-overlay[hidden] { display: none; }
+.modal-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6);
+  box-shadow: var(--glass-inset-highlight), var(--glass-shadow-lifted);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+.modal-header h2 {
+  margin: 0;
+  font-family: 'Barlow Condensed', sans-serif;
+  color: var(--ink);
+}
+#accessTable td:nth-child(2), #accessTable th:nth-child(2) { text-align: center; }
+#accessTable td:last-child, #accessTable th:last-child { text-align: right; width: 40px; }
+.access-add-form {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.access-add-form input[type="email"] { flex: 1; }
+.access-add-admin {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: 14px;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+}
+.access-error {
+  background: var(--status-danger-bg);
+  color: var(--status-danger-text);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  margin: var(--sp-4) 0 0;
+  font-size: 14px;
+}
+
 @media (max-width: 800px) {
   .layout { flex-direction: column; }
   .tabs { width: 100%; flex-direction: row; overflow-x: auto; padding: var(--sp-2); }

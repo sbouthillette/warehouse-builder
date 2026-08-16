@@ -5,6 +5,11 @@ This adds a sign-in gate in front of the whole app (every page and every
 reach it. Nobody else gets past the sign-in screen, regardless of the URL
 they try.
 
+The allowlist itself lives in the database and is managed from inside the
+app — click **Manage Access** in the top bar (only admins see that button)
+to add or remove people, or promote/demote admins. No Vercel dashboard, no
+env vars, no redeploy required for day-to-day changes.
+
 **Important — read before enabling this:** the sign-in screen only asks a
 visitor to *type* an email address; it does not verify they actually own
 it (no confirmation link, no password, no external identity provider).
@@ -18,24 +23,32 @@ like magic-link email verification or a real OAuth/SSO provider instead.
 Files involved:
 
 - `lib/session.js` — signs/verifies the session cookie.
-- `api/auth/login.js` — shows the email form and checks it against
-  `ALLOWED_EMAILS`, then sets the session cookie.
+- `lib/allowlist.js` — reads the `allowed_emails` database table, with a
+  30-second in-memory cache so a single page load's dozen-odd asset
+  requests don't each hit the database.
+- `sql/allowed_emails.sql` — creates the `allowed_emails` table and seeds
+  the first admin. Run once, see step 1 below.
+- `api/auth/login.js` — shows the email form and checks it against the
+  table, then sets the session cookie.
 - `api/auth/logout.js` — clears the cookie (wired to the "Sign Out" link
   in the top bar).
 - `middleware.js` — the actual gate. Runs before every request, checks the
-  cookie, and re-checks the email against `ALLOWED_EMAILS` every time (so
-  removing someone from the list revokes their access immediately, even if
-  their session cookie hasn't expired).
+  cookie, and re-checks the email against the table every time (through
+  the cache above), so removing someone revokes their access within
+  ~30 seconds, without waiting for their session cookie to expire.
 - `api/auth/me.js` — tells the front end the signed-in email and whether
-  it's on `ADMIN_EMAILS`; `js/main.js` uses this to show/hide the
-  Export JSON / Import JSON controls in the top bar.
+  they're an admin; `js/main.js` uses this to show/hide the Export JSON /
+  Import JSON controls and the Manage Access button.
+- `api/admin/allowed-emails.js` — the API behind the Manage Access panel
+  (list / add / remove / promote / demote). Every call re-checks that the
+  caller is an admin — being merely signed in isn't enough.
 
-None of this requires a new npm dependency or a database change — it's all
-plain Node/Web APIs.
+This uses the Postgres database you already provisioned for warehouse
+data (see the main `README.md`) — no new npm dependency.
 
-## 1. Generate a session secret
+## 1. One-time setup
 
-Run this once, locally, and copy the output:
+**a. Generate a session secret.** Run this once, locally, and copy the output:
 
 ```bash
 openssl rand -base64 32
@@ -46,56 +59,72 @@ openssl rand -base64 32
 This is a random signing key for the app's own session cookies. Keep it
 secret; anyone who has it could forge a valid session cookie.
 
-## 2. Set environment variables in Vercel
-
-In your Vercel project → **Settings → Environment Variables**, add both
-(for Production, and Preview too if you want auth on preview deployments):
+**b. Set the env var in Vercel.** Project → **Settings → Environment
+Variables** (for Production, and Preview too if you want auth on preview
+deployments):
 
 | Name | Value |
 |---|---|
-| `ALLOWED_EMAILS` | comma-separated list of addresses to let in, e.g. `alice@example.com,bob@example.com` |
-| `SESSION_SECRET` | from step 1 |
-| `ADMIN_EMAILS` | comma-separated list of addresses allowed to see Export JSON / Import JSON, e.g. `sebastien.bouthillette@spatialisos.com`. Optional — leave unset and nobody sees those controls. |
+| `SESSION_SECRET` | from step (a) |
 
-Matching is case-insensitive and whitespace around each address is
-trimmed, so `Alice@Example.com, bob@example.com` works fine — same for
-`ADMIN_EMAILS`.
+**c. Create and seed the allowlist table.** Open `sql/allowed_emails.sql`,
+check the seed email at the bottom is the address you want as the first
+admin (defaults to `sebastien.bouthillette@spatialisos.com`), then run the
+file once against your database — same way you ran `sql/schema.sql`
+originally: Vercel dashboard → **Storage** → your DB → **Query**, paste
+the file's contents, run it. (Or `psql "$POSTGRES_URL" -f sql/allowed_emails.sql`
+after `vercel env pull .env.local`.)
 
-**Every address in `ADMIN_EMAILS` must also be in `ALLOWED_EMAILS`** —
-admin status only matters once someone can sign in at all; it doesn't
-grant sign-in access by itself.
+**This step is required before deploying** — until that seed row exists,
+the allowlist is empty and nobody, including you, can sign in.
 
-## 3. Deploy and test
+## 2. Deploy and test
 
-Redeploy after setting the env vars (env var changes don't apply
+Redeploy after setting `SESSION_SECRET` (env var changes don't apply
 retroactively to a running deployment). Then:
 
 1. Open the app in a private/incognito window.
 2. You should land on a "Sign in" form asking for an email address.
-3. Enter an address from `ALLOWED_EMAILS` → you should land back in the
-   app, and the "Sign Out" link should now appear in the top bar.
-4. Sign out, then try an address that is *not* on the list → you should
-   see a "not on the access list" message, and no session should be
-   created.
+3. Enter your seeded admin address → you should land back in the app, and
+   "Sign Out", "Export JSON", "Import JSON", and "Manage Access" should
+   all appear in the top bar.
+4. Sign out, then try an address that isn't on the list → you should see
+   a "not on the access list" message, and no session should be created.
+5. Click **Manage Access**, add a teammate's email (leave "Admin"
+   unchecked), and confirm they can sign in but don't see Export/Import/
+   Manage Access themselves.
 
 **Recommended:** test this on a Preview deployment (push to a branch)
 before it hits everyone on Production, since it changes access for the
-whole app at once.
+whole app at once. Preview deployments share the same database unless you
+provisioned a separate one, so testing there uses the same allowlist.
 
-## Adding or removing someone
+## Adding, removing, or promoting someone day-to-day
 
-Edit `ALLOWED_EMAILS` in Vercel's Environment Variables and redeploy.
-Because the middleware re-checks the list on every request (not just at
-sign-in), a removed address loses access immediately — no need to wait
-for their session cookie to expire.
+Click **Manage Access** in the top bar (admins only):
+
+- **Add**: type an email, optionally check "Admin", click Add.
+- **Remove**: click ✕ next to their row. They're signed out within
+  ~30 seconds (the cache window), not instantly.
+- **Promote/demote**: toggle their "Admin" checkbox.
+
+You can't remove or demote the last remaining admin — the API blocks it —
+so you can't accidentally lock everyone out of the admin panel itself.
 
 ## Emergency rollback
 
-If this ever misfires and locks everyone out (typo in the list, missing
-env var, etc.), delete `middleware.js` (or rename it to something Vercel
-won't pick up, like `middleware.js.disabled`) and redeploy. The app goes
-back to fully open access immediately — nothing else needs to change to
-recover.
+If this ever misfires and locks everyone out (bad data in the table,
+database unreachable, etc.), delete `middleware.js` (or rename it to
+something Vercel won't pick up, like `middleware.js.disabled`) and
+redeploy. The app goes back to fully open access immediately — nothing
+else needs to change to recover. Once you can get back in, fix the
+`allowed_emails` table directly via the Vercel Query panel if needed.
+
+Note this system now depends on the database being reachable: if it's
+down, `middleware.js` fails closed (denies everyone) unless it still has
+a cached copy of the allowlist from the last successful check — so a
+short outage is usually invisible, but a long one will lock everyone out
+until the database recovers or you use the rollback above.
 
 ## What this does and doesn't protect
 
@@ -108,9 +137,15 @@ recover.
   past this gate.
 - It does **not** verify identity. See the callout at the top of this
   document.
-- The `ADMIN_EMAILS` Export/Import restriction is a UI convenience, not a
-  data-access boundary. Every signed-in user (admin or not) can already
-  see and edit warehouse data through the app itself — hiding the JSON
-  export/import buttons only removes the one-click way to grab or
-  overwrite the raw project file; it doesn't further restrict what data a
-  non-admin can reach.
+- The admin-only Export/Import JSON and Manage Access restrictions are a
+  UI convenience, not a data-access boundary. Every signed-in user (admin
+  or not) can already see and edit warehouse data through the app itself
+  — hiding those controls only removes the one-click way to grab/overwrite
+  the raw project file or change who's allowed in; it doesn't further
+  restrict what data a non-admin can reach.
+
+## Cleaning up (optional)
+
+If you previously set `ALLOWED_EMAILS` or `ADMIN_EMAILS` in Vercel's
+Environment Variables, they're no longer read by any code path — safe to
+delete whenever convenient.

@@ -27,8 +27,9 @@
     </div>
     <div class="topbar-actions">
       <span id="saveStatus" class="save-status">—</span>
-      <button id="btnExport" class="btn btn-ghost">Export JSON</button>
-      <label class="btn btn-ghost file-btn">
+      <button id="btnManageAccess" class="btn btn-ghost" hidden>Manage Access</button>
+      <button id="btnExport" class="btn btn-ghost" hidden>Export JSON</button>
+      <label id="importJsonLabel" class="btn btn-ghost file-btn" hidden>
         Import JSON
         <input type="file" id="fileImport" accept="application/json" hidden />
       </label>
@@ -642,6 +643,28 @@
       </section>
 
     </main>
+  </div>
+</div>
+
+<div id="accessModal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Manage Access</h2>
+      <button type="button" id="btnCloseAccessModal" class="icon-btn" title="Close">✕</button>
+    </div>
+    <p class="hint">Anyone on this list can sign in with just their email — no password, no confirmation link. Admins can also manage this list and use Export/Import JSON.</p>
+    <div class="table-wrap">
+      <table id="accessTable" class="data-table">
+        <thead><tr><th>Email</th><th>Admin</th><th></th></tr></thead>
+        <tbody id="accessTableBody"><tr><td colspan="3">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <form id="accessAddForm" class="access-add-form">
+      <input type="email" id="accessAddEmail" placeholder="new.person@example.com" required />
+      <label class="access-add-admin"><input type="checkbox" id="accessAddIsAdmin" /> Admin</label>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+    <p id="accessError" class="access-error" hidden></p>
   </div>
 </div>
 

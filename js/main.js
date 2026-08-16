@@ -71,11 +71,13 @@
     e.target.value = '';
   });
 
-  // Export/Import JSON (the whole project file) is admin-only — see
-  // ADMIN_EMAILS in api/auth/me.js. Everyone else who's signed in can still
-  // see and edit warehouse data normally; this just hides the raw
-  // project-file shortcut. This is a UI convenience, not a hard security
-  // boundary — the underlying data is already visible to any signed-in user
+  // ---------------- Admin-only UI: Export/Import JSON + Manage Access ----------------
+  // Both are gated on whether the signed-in email is an admin in the
+  // allowed_emails table (see lib/allowlist.js / api/auth/me.js). Everyone
+  // else who's signed in can still see and edit warehouse data normally —
+  // this just hides the raw project-file shortcut and the access-list
+  // editor. It's a UI convenience, not a hard security boundary: the
+  // underlying warehouse data is already visible to any signed-in user
   // through the app itself.
   (async function applyAdminOnlyUI() {
     let isAdmin = false;
@@ -85,10 +87,123 @@
     } catch (err) {
       console.error('Could not determine admin status', err);
     }
-    if (!isAdmin) {
-      document.getElementById('btnExport').hidden = true;
-      document.getElementById('fileImport').closest('label').hidden = true;
+    if (isAdmin) {
+      document.getElementById('btnExport').hidden = false;
+      document.getElementById('importJsonLabel').hidden = false;
+      document.getElementById('btnManageAccess').hidden = false;
     }
+  })();
+
+  // ---------------- Manage Access modal (admin-only) ----------------
+  (function setupAccessModal() {
+    const modal = document.getElementById('accessModal');
+    const tbody = document.getElementById('accessTableBody');
+    const errorEl = document.getElementById('accessError');
+    const addForm = document.getElementById('accessAddForm');
+    const addEmailInput = document.getElementById('accessAddEmail');
+    const addAdminCheckbox = document.getElementById('accessAddIsAdmin');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+    function clearError() {
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+    }
+
+    async function loadAccessList() {
+      tbody.innerHTML = '<tr><td colspan="3">Loading…</td></tr>';
+      clearError();
+      try {
+        const res = await fetch('/api/admin/allowed-emails');
+        const list = await res.json();
+        if (!res.ok) throw new Error(list.error || 'Failed to load the access list.');
+        renderAccessTable(list);
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="3">Couldn’t load the access list.</td></tr>';
+        showError(err.message);
+      }
+    }
+
+    function renderAccessTable(list) {
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3">No one on the list yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map((row) => `
+        <tr data-email="${escapeHtml(row.email)}">
+          <td>${escapeHtml(row.email)}</td>
+          <td><input type="checkbox" class="access-admin-toggle" ${row.isAdmin ? 'checked' : ''} /></td>
+          <td><button type="button" class="icon-btn access-remove-btn" title="Remove">✕</button></td>
+        </tr>
+      `).join('');
+    }
+
+    tbody.addEventListener('change', async (e) => {
+      if (!e.target.classList.contains('access-admin-toggle')) return;
+      const row = e.target.closest('tr');
+      const email = row.dataset.email;
+      const isAdmin = e.target.checked;
+      clearError();
+      try {
+        const res = await fetch('/api/admin/allowed-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, isAdmin })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Could not update that entry.');
+      } catch (err) {
+        e.target.checked = !isAdmin; // revert the checkbox
+        showError(err.message);
+      }
+    });
+
+    tbody.addEventListener('click', async (e) => {
+      if (!e.target.classList.contains('access-remove-btn')) return;
+      const row = e.target.closest('tr');
+      const email = row.dataset.email;
+      if (!confirm(`Remove ${email} from the access list? They'll be signed out of the app immediately.`)) return;
+      clearError();
+      try {
+        const res = await fetch(`/api/admin/allowed-emails?email=${encodeURIComponent(email)}`, { method: 'DELETE' });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Could not remove that entry.');
+        row.remove();
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+
+    addForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = addEmailInput.value.trim();
+      const isAdmin = addAdminCheckbox.checked;
+      if (!email) return;
+      clearError();
+      try {
+        const res = await fetch('/api/admin/allowed-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, isAdmin })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Could not add that address.');
+        addEmailInput.value = '';
+        addAdminCheckbox.checked = false;
+        await loadAccessList();
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+
+    document.getElementById('btnManageAccess').addEventListener('click', () => {
+      modal.hidden = false;
+      loadAccessList();
+    });
+    document.getElementById('btnCloseAccessModal').addEventListener('click', () => { modal.hidden = true; });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
   })();
 
   // ---------------- Save status indicator ----------------
