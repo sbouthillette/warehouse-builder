@@ -1,50 +1,112 @@
-// api/auth/login.js — starts the Google sign-in flow. The `hd` param is
-// only a UX hint that pre-filters which accounts Google's chooser shows —
-// it is NOT itself a security boundary (a user could still pick a non-
-// Workspace account if they typed the URL directly). The real check
-// happens server-side in api/auth/callback.js, which re-verifies the
-// signed-in account's domain against ALLOWED_GOOGLE_DOMAIN before ever
-// issuing a session cookie.
-import { signToken } from '../../lib/session.js';
+// api/auth/login.js — the whole sign-in gate: a plain HTML form asking for
+// an email address, checked against a static allowlist (ALLOWED_EMAILS).
+//
+// IMPORTANT: this does NOT verify that the visitor actually owns the email
+// they type in — there's no confirmation link, no password, no external
+// identity provider. It only checks "is this address on the list". That's
+// a deliberate simplicity/security tradeoff: no OAuth client to register,
+// no third-party dependency, nothing to configure beyond an env var — in
+// exchange for weaker guarantees than a real sign-in. Anyone who *knows*
+// an allowed address can type it in and get a session as that address.
+// Only rely on this if the people who might abuse that are already people
+// you trust (e.g. a small internal team), not as a defense against a
+// motivated outside attacker.
+import { signToken, SESSION_COOKIE, SESSION_MAX_AGE } from '../../lib/session.js';
 
-function baseUrl(req) {
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  return `${proto}://${req.headers.host}`;
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Only ever accept a same-site path for the post-login redirect — never let
+// this become an open redirect to an attacker-controlled URL.
+function safeNext(raw) {
+  const next = typeof raw === 'string' ? raw : '/';
+  return next.startsWith('/') && !next.startsWith('//') ? next : '/';
+}
+
+function parseAllowedEmails(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function formPage({ next, error }) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign in — Dynamic Spatial Model Builder</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 400px; margin: 96px auto; padding: 0 20px; color: #1a1a1a; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  p.sub { color: #666; margin-top: 0; }
+  input[type=email] { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; margin: 12px 0; }
+  button { width: 100%; padding: 10px 12px; font-size: 1rem; border: none; border-radius: 6px; background: #1a1a1a; color: #fff; cursor: pointer; }
+  button:hover { background: #333; }
+  .error { background: #fdecea; color: #b3261e; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 0.9rem; }
+</style>
+</head><body>
+  <h1>Sign in</h1>
+  <p class="sub">Enter your email to access the Dynamic Spatial Model Builder.</p>
+  ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+  <form method="POST" action="/api/auth/login">
+    <input type="email" name="email" placeholder="you@example.com" required autofocus />
+    <input type="hidden" name="next" value="${escapeHtml(next)}" />
+    <button type="submit">Continue</button>
+  </form>
+</body></html>`;
 }
 
 export default async function handler(req, res) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const domain = process.env.ALLOWED_GOOGLE_DOMAIN;
   const secret = process.env.SESSION_SECRET;
-  if (!clientId || !domain || !secret) {
+  const allowedEmails = parseAllowedEmails(process.env.ALLOWED_EMAILS);
+
+  if (!secret || allowedEmails.length === 0) {
     res.status(500).send(
-      'Google sign-in is not configured yet. Set GOOGLE_CLIENT_ID, ALLOWED_GOOGLE_DOMAIN, ' +
-      'and SESSION_SECRET in the Vercel project\'s Environment Variables, then redeploy.'
+      "Email sign-in is not configured yet. Set ALLOWED_EMAILS (a comma-separated list of " +
+      "addresses to let in) and SESSION_SECRET in the Vercel project's Environment Variables, then redeploy."
     );
     return;
   }
 
-  const rawNext = typeof req.query.next === 'string' ? req.query.next : '/';
-  // Only ever accept a same-site path — never let this become an open
-  // redirect to an attacker-controlled URL.
-  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
+  if (req.method === 'GET') {
+    const next = safeNext(req.query.next);
+    res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(formPage({ next, error: null }));
+    return;
+  }
 
-  // `state` is a short-lived signed token (not a bare random string) so it
-  // doubles as CSRF protection *and* a tamper-proof carrier for `next`,
-  // without needing a second cookie round trip.
-  const state = await signToken({ next }, secret, 600); // 10 minutes to complete sign-in
+  if (req.method === 'POST') {
+    const body = req.body || {};
+    const email = String(body.email || '').trim();
+    const next = safeNext(body.next);
 
-  const redirectUri = `${baseUrl(req)}/api/auth/callback`;
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    hd: domain,
-    prompt: 'select_account',
-    state
-  });
+    if (!email || !EMAIL_RE.test(email)) {
+      res.status(400).setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(formPage({ next, error: 'Enter a valid email address.' }));
+      return;
+    }
 
-  res.writeHead(302, { Location: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
-  res.end();
+    if (!allowedEmails.includes(email.toLowerCase())) {
+      res.status(403).setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(formPage({
+        next,
+        error: `${email} is not on the access list. Ask an admin to add it, or try a different address.`
+      }));
+      return;
+    }
+
+    const sessionToken = await signToken({ email: email.toLowerCase() }, secret, SESSION_MAX_AGE);
+    res.setHeader(
+      'Set-Cookie',
+      `${SESSION_COOKIE}=${sessionToken}; Path=/; Max-Age=${SESSION_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`
+    );
+    res.writeHead(302, { Location: next });
+    res.end();
+    return;
+  }
+
+  res.setHeader('Allow', 'GET, POST');
+  res.status(405).send('Method not allowed');
 }

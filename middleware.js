@@ -1,9 +1,9 @@
 // middleware.js — Vercel Edge Middleware. Runs on every request except the
-// auth routes themselves (see `matcher` below); redirects to Google
-// sign-in unless a valid, unexpired session cookie proves the visitor
-// signed in with an account on ALLOWED_GOOGLE_DOMAIN. This file is the
-// actual enforcement point — the `hd` hint on the Google consent screen
-// (api/auth/login.js) is just a UX nicety, not a guarantee by itself.
+// auth routes themselves (see `matcher` below); redirects to the email
+// sign-in form unless a valid, unexpired session cookie proves the visitor
+// signed in with an address on ALLOWED_EMAILS. The allowlist is re-checked
+// on every request (not just at sign-in time), so removing an address from
+// ALLOWED_EMAILS revokes access immediately, even for an existing session.
 //
 // EMERGENCY OFF SWITCH: if this ever locks everyone out (misconfigured env
 // vars, etc.), delete or rename this file and redeploy. The app falls back
@@ -11,9 +11,9 @@
 import { verifyToken, SESSION_COOKIE } from './lib/session.js';
 
 export const config = {
-  // Everything except /api/auth/* (the login/callback/logout routes must
-  // stay reachable to unauthenticated visitors, or nobody could ever sign
-  // in). This covers the static app shell, every other /api route, and all
+  // Everything except /api/auth/* (the login/logout routes must stay
+  // reachable to unauthenticated visitors, or nobody could ever sign in).
+  // This covers the static app shell, every other /api route, and all
   // pages.
   matcher: ['/((?!api/auth/).*)']
 };
@@ -24,14 +24,21 @@ function getCookie(request, name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function parseAllowedEmails(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export default async function middleware(request) {
   const secret = process.env.SESSION_SECRET;
-  const domain = process.env.ALLOWED_GOOGLE_DOMAIN;
+  const allowedEmails = parseAllowedEmails(process.env.ALLOWED_EMAILS);
 
-  if (secret && domain) {
+  if (secret && allowedEmails.length > 0) {
     const cookie = getCookie(request, SESSION_COOKIE);
     const session = await verifyToken(cookie, secret);
-    if (session && session.domain && session.domain.toLowerCase() === domain.toLowerCase()) {
+    if (session && session.email && allowedEmails.includes(String(session.email).toLowerCase())) {
       return; // authenticated — let the request through
     }
   }

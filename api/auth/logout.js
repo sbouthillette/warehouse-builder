@@ -1,5 +1,5 @@
 // api/auth/logout.js — clears the session cookie and sends the visitor back
-// to Google sign-in. Plain GET link (see the Sign Out link in index.html)
+// to the sign-in form. Plain GET link (see the Sign Out link in index.html)
 // rather than a form/fetch call, since there's nothing sensitive about the
 // action itself.
 import { SESSION_COOKIE } from '../../lib/session.js';
