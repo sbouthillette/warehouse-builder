@@ -5,7 +5,6 @@
   "description": "Dynamic Spatial Model Builder — Spatialis OS digital twin PWA with a Vercel Postgres backend",
   "type": "module",
   "scripts": {
-    "dev": "npx vercel dev",
     "deploy": "npx vercel --prod"
   },
   "dependencies": {

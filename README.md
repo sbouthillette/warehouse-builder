@@ -13,9 +13,13 @@ A PWA for building a digital twin of a warehouse: shell, zones, racking bays, ra
 
 ```bash
 npm install
-vercel env pull .env.local   # pulls POSTGRES_URL etc. from your Vercel project
-npm run dev                  # runs `vercel dev`, serving both the static app and /api routes
+npx vercel env pull .env.local   # pulls POSTGRES_URL etc. from your Vercel project
+npx vercel dev                   # serves both the static app and /api routes
 ```
+
+(`npx` downloads the Vercel CLI on the fly if you don't have it installed globally — if you do, drop `npx` and just run `vercel env pull .env.local` / `vercel dev`.)
+
+**Run `vercel dev` directly — don't wrap it in an npm script.** There's deliberately no `"dev"` script in `package.json` for this. If you add one that calls `vercel dev` (or `npm run dev` that does), and your Vercel Project Settings' **Development Command** is also set to run that same script — which is a common default — `vercel dev` ends up trying to launch itself and fails with `Error: vercel dev must not recursively invoke itself`. If you ever hit that: open the project on vercel.com → **Settings → Build & Development Settings → Development Command**, and either clear it or turn its **Override** toggle off (this project has no framework/build step for the frontend, so there's nothing it needs to invoke).
 
 Open the URL `vercel dev` prints (usually `http://localhost:3000`).
 
