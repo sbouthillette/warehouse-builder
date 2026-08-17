@@ -905,3 +905,28 @@ h2 {
   .tab-btn { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; }
   .tab-btn.active { border-bottom-color: var(--primary-2); }
 }
+
+/* Mobile gate — below this, #app is replaced entirely by a "use your
+   computer" message (#mobileGate in index.html) rather than trying to
+   squeeze the 2D/3D editors and dense tables onto a phone screen. 600px is
+   comfortably below tablet width (768px+, where the 800px breakpoint
+   above still applies and the app stays usable), so this only catches
+   actual phones. */
+#mobileGate { display: none; }
+@media (max-width: 600px) {
+  #app { display: none; }
+  #mobileGate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    min-height: 100vh;
+    padding: var(--sp-8) var(--sp-6);
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .mobile-gate-logo { width: 160px; max-width: 60%; height: auto; margin-bottom: var(--sp-4); }
+  #mobileGate h2 { margin-bottom: var(--sp-2); }
+  #mobileGate .hint { max-width: 340px; }
+}

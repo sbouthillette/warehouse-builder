@@ -15,6 +15,15 @@
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+<!-- Shown instead of the whole app below a phone-width viewport (see
+     css/style.css's mobile-gate media query) — pure CSS, so it applies
+     immediately on load with no JS required and no flash of the real app.
+     A sibling of #app (not inside it), so hiding #app can't hide this too. -->
+<div id="mobileGate">
+  <img class="mobile-gate-logo" src="assets/logo/spatialis-horizontal-colour.png" alt="Spatialis OS" />
+  <h2>Please use your computer</h2>
+  <p class="hint">The Dynamic Spatial Model Builder — 2D/3D editing, tables, and the digital twin view — isn't built for a phone-sized screen yet. Open this link on a laptop or desktop for the full experience.</p>
+</div>
 <div id="app">
 
   <header class="topbar">
@@ -675,7 +684,7 @@
       <h2>Manage Access</h2>
       <button type="button" id="btnCloseAccessModal" class="icon-btn" title="Close">✕</button>
     </div>
-    <p class="hint">Anyone on this list can sign in with just their email — no password, no confirmation link. Admins can also manage this list and use Export/Import JSON.</p>
+    <p class="hint">Sign-in is self-serve now — anyone who enters an email on the sign-in page gets guest access automatically and shows up here, no approval needed. This list is for granting Admin (Export/Import JSON, Manage Access, Visitor Log) — check the box to promote someone, or remove a row to revoke their access entirely.</p>
     <div class="table-wrap">
       <table id="accessTable" class="data-table">
         <thead><tr><th>Email</th><th>Admin</th><th></th></tr></thead>
