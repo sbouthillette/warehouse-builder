@@ -43,7 +43,7 @@ function showInventoryInfo(inv) {
   // description and photo.
   const contentsRows = contents.map((line) => {
     const item = findItem(line.partNumber);
-    const photo = item && item.imageDataUrl ? `<img class="info-panel-photo" src="${item.imageDataUrl}" alt="" />` : '';
+    const photo = item && item.imageDataUrl ? `<img class="info-panel-photo lightbox-trigger" src="${item.imageDataUrl}" alt="${escapeHtmlLocal(item.description || line.partNumber)}" />` : '';
     const desc = item && item.description
       ? `<div class="info-panel-row"><span>Description</span><span>${escapeHtmlLocal(item.description)}</span></div>`
       : '';

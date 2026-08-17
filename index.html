@@ -653,7 +653,7 @@
                 <input type="file" id="itemImage" accept="image/*" />
               </label>
               <div id="itemImagePreviewWrap" class="full-row" hidden>
-                <img id="itemImagePreview" class="item-photo-preview" alt="Preview" />
+                <img id="itemImagePreview" class="item-photo-preview lightbox-trigger" alt="Preview" />
                 <button type="button" id="btnRemoveItemImage" class="btn btn-ghost">Remove Photo</button>
               </div>
               <div class="form-actions full-row">
@@ -710,6 +710,11 @@
     </div>
     <p id="visitorLogError" class="access-error" hidden></p>
   </div>
+</div>
+
+<div id="photoLightbox" class="lightbox-overlay" hidden>
+  <button type="button" id="btnClosePhotoLightbox" class="icon-btn lightbox-close" aria-label="Close">✕</button>
+  <img id="photoLightboxImg" alt="" />
 </div>
 
 <script type="importmap">

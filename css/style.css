@@ -779,13 +779,54 @@ h2 {
 }
 .info-panel-photo {
   width: 100%;
-  max-height: 120px;
-  object-fit: cover;
+  height: 140px;
+  object-fit: contain; /* show the whole product, never crop it, even if it doesn't fill the box */
+  background: var(--glass-bg);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   margin: 4px 0 6px;
   display: block;
 }
+
+/* Any product photo the user can click to see full-size — the info-panel
+   photo (click a box in the 3D view), Items-tab table thumbnails, and the
+   Add Item form's upload preview all opt in via this class. */
+.lightbox-trigger {
+  cursor: zoom-in;
+  transition: opacity var(--motion-fast);
+}
+.lightbox-trigger:hover { opacity: 0.85; }
+
+/* ---------------- Photo lightbox (quasi-fullscreen product photo) ---------------- */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+  background: rgba(26, 26, 24, 0.82);
+  cursor: zoom-out;
+}
+.lightbox-overlay[hidden] { display: none; }
+.lightbox-overlay img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-lifted);
+  cursor: default;
+}
+.lightbox-close {
+  position: fixed;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-size: 20px;
+}
+.lightbox-close:hover { background: #fff; }
 
 /* ---------------- Manage Access modal ---------------- */
 .modal-overlay {

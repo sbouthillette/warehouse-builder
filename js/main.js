@@ -291,6 +291,38 @@
     });
   })();
 
+  // ---------------- Photo lightbox (quasi-fullscreen product photo) ------
+  // Any <img class="lightbox-trigger"> anywhere in the app opens here at
+  // full size — the click-a-box-in-3D info panel photo, Items-tab table
+  // thumbnails, and the Add Item form's upload preview. Delegated on
+  // document rather than bound per-image, since the info panel's photos are
+  // rebuilt from scratch (innerHTML) every time a different box is clicked.
+  (function setupPhotoLightbox() {
+    const overlay = document.getElementById('photoLightbox');
+    const img = document.getElementById('photoLightboxImg');
+    if (!overlay || !img) return;
+
+    function open(src, alt) {
+      if (!src) return;
+      img.src = src;
+      img.alt = alt || '';
+      overlay.hidden = false;
+    }
+    function close() {
+      overlay.hidden = true;
+      img.src = '';
+    }
+
+    document.addEventListener('click', (e) => {
+      const trigger = e.target.closest('.lightbox-trigger');
+      if (!trigger || trigger.tagName !== 'IMG' || !trigger.src) return;
+      open(trigger.src, trigger.alt);
+    });
+    document.getElementById('btnClosePhotoLightbox').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+  })();
+
   // ---------------- Save status indicator ----------------
   const saveStatusEl = document.getElementById('saveStatus');
   store.onSaveState((state) => {
@@ -2372,7 +2404,7 @@
     (store.data.itemCatalog || []).forEach((it) => {
       const tr = document.createElement('tr');
       const photoCell = it.imageDataUrl
-        ? `<img src="${it.imageDataUrl}" class="item-thumb" alt="" />`
+        ? `<img src="${it.imageDataUrl}" class="item-thumb lightbox-trigger" alt="" />`
         : `<div class="item-thumb-placeholder"></div>`;
       tr.innerHTML = `
         <td>${photoCell}</td>
