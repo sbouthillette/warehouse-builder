@@ -11,8 +11,28 @@
 // get a session as that address. Only rely on this if the people who
 // might abuse that are already people you trust (e.g. a small internal
 // team), not as a defense against a motivated outside attacker.
+import { sql } from '@vercel/postgres';
 import { signToken, SESSION_COOKIE, SESSION_MAX_AGE } from '../../lib/session.js';
 import { getAllowlist } from '../../lib/allowlist.js';
+
+// Best-effort visit logging for the admin-only "Visitor Log" panel (see
+// sql/login_events.sql and api/admin/login-history.js). Never let a
+// logging failure block someone from actually signing in — swallow and
+// move on.
+async function recordLoginEvent(req, email) {
+  try {
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const ip = (typeof forwardedFor === 'string' ? forwardedFor.split(',')[0].trim() : null)
+      || req.socket?.remoteAddress
+      || null;
+    await sql`
+      INSERT INTO login_events (email, user_agent, ip)
+      VALUES (${email}, ${req.headers['user-agent'] || null}, ${ip})
+    `;
+  } catch (err) {
+    console.error('Could not record login event', err);
+  }
+}
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -100,6 +120,8 @@ export default async function handler(req, res) {
       }));
       return;
     }
+
+    await recordLoginEvent(req, email.toLowerCase());
 
     const sessionToken = await signToken({ email: email.toLowerCase() }, secret, SESSION_MAX_AGE);
     res.setHeader(

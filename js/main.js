@@ -91,6 +91,7 @@
       document.getElementById('btnExport').hidden = false;
       document.getElementById('importJsonLabel').hidden = false;
       document.getElementById('btnManageAccess').hidden = false;
+      document.getElementById('btnVisitorLog').hidden = false;
     }
   })();
 
@@ -204,6 +205,90 @@
     });
     document.getElementById('btnCloseAccessModal').addEventListener('click', () => { modal.hidden = true; });
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
+  })();
+
+  // ---------------- Visitor Log modal (admin-only) ----------------
+  // Answers "I emailed people the app URL — who actually visited?" by
+  // showing, per invited address, how many times they've signed in and
+  // when (see api/admin/login-history.js / sql/login_events.sql).
+  (function setupVisitorLogModal() {
+    const modal = document.getElementById('visitorLogModal');
+    const tbody = document.getElementById('visitorLogTableBody');
+    const errorEl = document.getElementById('visitorLogError');
+    let lastList = [];
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+    function clearError() {
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+    }
+    function formatDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return isNaN(d) ? '—' : d.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+    }
+
+    async function loadVisitorLog() {
+      tbody.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
+      clearError();
+      try {
+        const res = await fetch('/api/admin/login-history');
+        const list = await res.json();
+        if (!res.ok) throw new Error(list.error || 'Failed to load the visitor log.');
+        lastList = list;
+        renderVisitorLogTable(list);
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="5">Couldn’t load the visitor log.</td></tr>';
+        showError(err.message);
+      }
+    }
+
+    function renderVisitorLogTable(list) {
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">No one on the access list yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map((row) => `
+        <tr>
+          <td style="text-align:left">${escapeHtml(row.email)}${row.isAdmin ? ' <span class="hint" style="display:inline;margin:0;">(admin)</span>' : ''}</td>
+          <td>${formatDate(row.invitedAt)}</td>
+          <td>${row.visitCount > 0 ? row.visitCount : '<span class="visitor-log-never">Never</span>'}</td>
+          <td>${formatDate(row.firstVisit)}</td>
+          <td>${formatDate(row.lastVisit)}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('btnVisitorLog').addEventListener('click', () => {
+      modal.hidden = false;
+      loadVisitorLog();
+    });
+    document.getElementById('btnCloseVisitorLogModal').addEventListener('click', () => { modal.hidden = true; });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
+    document.getElementById('btnRefreshVisitorLog').addEventListener('click', () => loadVisitorLog());
+
+    document.getElementById('btnCopyNeverVisited').addEventListener('click', async (e) => {
+      const neverVisited = lastList.filter((row) => !row.visitCount).map((row) => row.email);
+      clearError();
+      if (neverVisited.length === 0) {
+        showError('Everyone on the access list has visited at least once.');
+        return;
+      }
+      const btn = e.currentTarget;
+      const original = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(neverVisited.join(', '));
+        btn.textContent = 'Copied!';
+      } catch (err) {
+        showError('Could not copy to clipboard — your browser may be blocking it.');
+      }
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    });
   })();
 
   // ---------------- Save status indicator ----------------

@@ -42,6 +42,11 @@ Files involved:
 - `api/admin/allowed-emails.js` — the API behind the Manage Access panel
   (list / add / remove / promote / demote). Every call re-checks that the
   caller is an admin — being merely signed in isn't enough.
+- `sql/login_events.sql` — creates the `login_events` table, one row per
+  successful sign-in. Run once, same way as `sql/allowed_emails.sql`.
+- `api/admin/login-history.js` — the API behind the **Visitor Log** panel:
+  for every address on the access list, how many times they've signed in
+  and when.
 
 This uses the Postgres database you already provisioned for warehouse
 data (see the main `README.md`) — no new npm dependency.
@@ -78,6 +83,12 @@ after `vercel env pull .env.local`.)
 **This step is required before deploying** — until that seed row exists,
 the allowlist is empty and nobody, including you, can sign in.
 
+**d. Create the visitor log table.** Same process, this time with
+`sql/login_events.sql` — run its contents once against your database. This
+one isn't required for sign-in to work; skip it and the app still runs
+fine, but the **Visitor Log** panel (see below) will show an error until
+it's been run.
+
 ## 2. Deploy and test
 
 Redeploy after setting `SESSION_SECRET` (env var changes don't apply
@@ -110,6 +121,22 @@ Click **Manage Access** in the top bar (admins only):
 
 You can't remove or demote the last remaining admin — the API blocks it —
 so you can't accidentally lock everyone out of the admin panel itself.
+
+## Visitor Log — knowing who's actually signed in
+
+Click **Visitor Log** in the top bar (admins only) to see, for every
+address on the access list: when they were invited, how many times
+they've signed in, and their first/last sign-in time. Addresses that
+haven't signed in yet show "Never" — useful right after you've emailed
+people the app URL and want to know who's actually shown up. A **Copy
+emails that haven't visited** button grabs that list for a follow-up
+email.
+
+This counts *sign-ins* (submitting the email form), not every page load —
+once someone's session cookie is active (up to 14 days), continuing to use
+the app doesn't add new rows. So "last visit" is really "last time they
+had to sign in again," which usually means their first visit unless the
+cookie expired or they signed in from a new device/browser in between.
 
 ## Emergency rollback
 

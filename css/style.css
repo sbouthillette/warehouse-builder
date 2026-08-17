@@ -846,6 +846,17 @@ h2 {
   margin: var(--sp-4) 0 0;
   font-size: 14px;
 }
+#visitorLogModal .modal-card { max-width: 720px; }
+#visitorLogTable td:nth-child(n+2) { text-align: center; white-space: nowrap; }
+#visitorLogTable th:nth-child(n+2) { text-align: center; }
+.visitor-log-never { color: var(--ink-secondary); font-style: italic; }
+.visitor-log-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
 
 @media (max-width: 800px) {
   .layout { flex-direction: column; }

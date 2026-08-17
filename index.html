@@ -28,6 +28,7 @@
     <div class="topbar-actions">
       <span id="saveStatus" class="save-status">—</span>
       <button id="btnManageAccess" class="btn btn-ghost" hidden>Manage Access</button>
+      <button id="btnVisitorLog" class="btn btn-ghost" hidden>Visitor Log</button>
       <button id="btnExport" class="btn btn-ghost" hidden>Export JSON</button>
       <label id="importJsonLabel" class="btn btn-ghost file-btn" hidden>
         Import JSON
@@ -665,6 +666,27 @@
       <button type="submit" class="btn btn-primary">Add</button>
     </form>
     <p id="accessError" class="access-error" hidden></p>
+  </div>
+</div>
+
+<div id="visitorLogModal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Visitor Log</h2>
+      <button type="button" id="btnCloseVisitorLogModal" class="icon-btn" title="Close">✕</button>
+    </div>
+    <p class="hint">Everyone on the access list, and whether they've actually signed in yet. "Last visit" updates each time someone signs in with the email form — it doesn't track every page view within a session.</p>
+    <div class="table-wrap">
+      <table id="visitorLogTable" class="data-table">
+        <thead><tr><th>Email</th><th>Invited</th><th>Visits</th><th>First visit</th><th>Last visit</th></tr></thead>
+        <tbody id="visitorLogTableBody"><tr><td colspan="5">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="visitor-log-actions">
+      <button type="button" id="btnCopyNeverVisited" class="btn btn-ghost">Copy emails that haven't visited</button>
+      <button type="button" id="btnRefreshVisitorLog" class="btn btn-ghost">Refresh</button>
+    </div>
+    <p id="visitorLogError" class="access-error" hidden></p>
   </div>
 </div>
 

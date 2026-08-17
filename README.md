@@ -45,3 +45,5 @@ The warehouse picker in the bar under the header lists all your saved warehouses
 - `api/warehouses/index.js`, `api/warehouses/[id].js` — Vercel serverless functions (CRUD)
 - `sql/schema.sql` — Postgres table definition
 - `manifest.json`, `sw.js`, `icons/` — PWA install/offline support (the service worker never caches `/api/*`, only the static app shell)
+
+See `SETUP_EMAIL_AUTH.md` for the email sign-in gate, the admin-only Manage Access panel, and the Visitor Log (who from your invite list has actually signed in — `sql/login_events.sql`, `api/admin/login-history.js`).
