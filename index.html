@@ -26,16 +26,24 @@
 </div>
 <div id="app">
 
+  <!-- Persistent, non-dismissible, full-width banner — every visitor sees
+       this every time, not just on a first visit (see the "Request a Full
+       Demo" button in the header below, which lets someone act on it). A
+       full-width strip above the header rather than something squeezed
+       between the logo and the action buttons: the button cluster's width
+       varies a lot (a guest sees 2 buttons, an admin can see 6), and at
+       plenty of realistic desktop widths there isn't room left over in the
+       header row to fit this message on one or two lines without it
+       turning into an awkward narrow tower. A full-width row never has
+       that problem — it always has the whole viewport to work with. -->
+  <div class="demo-banner">You're viewing a live demo of the Dynamic Spatial Model — not the full Spatialis OS platform.</div>
+
   <header class="topbar">
     <div class="brand">
       <img class="brand-mark" src="assets/logo/spatialis-cube.png" alt="Spatialis OS" />
       <div>
         <h1>Dynamic Spatial Model Builder</h1>
         <p class="subtitle">Spatialis OS · Dynamic Spatial Model Editor</p>
-        <!-- Persistent, non-dismissible — every visitor should see this
-             every time, not just on a first visit (see the button next to
-             it, wired up in js/main.js, which lets someone act on it). -->
-        <p class="demo-disclaimer">You're viewing a live demo of the Dynamic Spatial Model — not the full Spatialis OS platform.</p>
       </div>
     </div>
     <div class="topbar-actions">
@@ -80,8 +88,8 @@
       <button class="tab-btn" data-tab="racks">5. Racks &amp; Aisles</button>
       <button class="tab-btn" data-tab="doors">6. Doors</button>
       <button class="tab-btn" data-tab="zones">7. Zones, Obstacles &amp; Walls</button>
-      <button class="tab-btn" data-tab="inventory">8. Inventory</button>
-      <button class="tab-btn" data-tab="items">9. Items</button>
+      <button class="tab-btn" data-tab="inventory">8. Add Inventory</button>
+      <button class="tab-btn" data-tab="items">9. Create Items</button>
     </nav>
 
     <main class="content">

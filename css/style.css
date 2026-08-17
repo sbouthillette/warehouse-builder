@@ -93,10 +93,30 @@ body {
 
 #app { display: flex; flex-direction: column; height: 100vh; }
 
+/* Persistent "this is a demo" banner — see index.html for why it's never
+   dismissed/hidden, and why it's a full-width strip above the header
+   rather than squeezed between the logo and the (variable-width) action
+   buttons. Solid brand-color fill, white bold text — deliberately more
+   assertive than a subtle text note, so it actually reads as a notice. */
+.demo-banner {
+  text-align: center;
+  padding: 8px var(--sp-6);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .1px;
+  color: #ffffff;
+  background: var(--primary-2);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 6;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-4);
   padding: var(--sp-3) var(--sp-6);
   background: var(--glass-bg-strong);
   backdrop-filter: var(--glass-blur);
@@ -126,12 +146,8 @@ body {
   color: var(--ink);
 }
 .brand .subtitle { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-secondary); }
-/* Persistent "this is a demo" note under the tagline — see index.html for
-   why it's never dismissed/hidden. Brand-colored text rather than a boxed
-   banner so it reads as part of the header, not as a warning/error state. */
-.brand .demo-disclaimer { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: var(--primary-2); font-weight: 500; }
 
-.topbar-actions { display: flex; align-items: center; gap: var(--sp-2); }
+.topbar-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-2); }
 .save-status { font-size: 13px; color: var(--ink-secondary); margin-right: var(--sp-1); }
 
 .btn {
