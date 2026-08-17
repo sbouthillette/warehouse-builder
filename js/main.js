@@ -97,6 +97,9 @@
       document.getElementById('importJsonLabel').hidden = false;
       document.getElementById('btnManageAccess').hidden = false;
       document.getElementById('btnVisitorLog').hidden = false;
+      // Guest-only button (see index.html) — admins get Import JSON in
+      // this spot instead.
+      document.getElementById('btnVisitWebsite').hidden = true;
     }
     // Personalize the "Request a Full Demo" mailto with who's asking, once
     // we know it — the static href in index.html is a fine fallback for

@@ -196,6 +196,15 @@ body {
 .btn-danger-ghost { background: var(--glass-bg); color: var(--status-danger-text); border-color: var(--glass-border-soft); }
 .btn-danger-ghost:hover { background: rgba(252, 235, 235, 0.85); border-color: var(--status-danger-text); }
 .file-btn { display: inline-flex; align-items: center; }
+/* Without this, the [hidden] attribute on #importJsonLabel does nothing:
+   author-origin rules (this one) always win over the browser's built-in
+   [hidden]{display:none} regardless of specificity, so the plain
+   `.file-btn { display: inline-flex }` above was silently making the
+   Import JSON button visible to every signed-in user, admin or not, the
+   whole time — the admin-gating JS in main.js never needed to un-hide it
+   because it was never actually hidden. Same fix already applied to
+   .modal-overlay[hidden] above for the same reason. */
+.file-btn[hidden] { display: none; }
 .file-btn.is-disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 .icon-btn {
   background: transparent; border: none; color: var(--ink-secondary); cursor: pointer; font-size: 14px;
