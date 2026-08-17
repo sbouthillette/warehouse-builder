@@ -182,7 +182,7 @@ function animate() {
 // sprite it hands out here — and applying the current show/hide state to
 // each new one — is enough to drive a single global "toggle labels" button
 // without touching every individual build*() call site.
-let labelsVisible = true;
+let labelsVisible = false;
 let labelSprites = [];
 
 function makeTextSprite(text) {

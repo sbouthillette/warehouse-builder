@@ -449,6 +449,8 @@
     }
     const clearInv = document.getElementById('btnClearInventory');
     if (clearInv) clearInv.disabled = locked;
+    document.querySelectorAll('#formAddInventory input, #formAddInventory select, #formAddInventory button')
+      .forEach((el) => { el.disabled = locked; });
   }
 
   document.getElementById('btnToggleLock').addEventListener('click', async () => {
@@ -2012,6 +2014,76 @@
     }));
   }
 
+  // Location Code dropdown for the "Add Inventory Manually" form. Lists
+  // every addressable location (same source as the Excel export), marking
+  // ones that already have contents so picking one there reads as "add
+  // another part number to this pallet" rather than "create a new one".
+  function renderInventoryLocationOptions() {
+    const select = document.getElementById('invAddLocationCode');
+    if (!select) return;
+    const current = select.value;
+    const occupiedCodes = new Set(store.data.inventory.map((inv) => inv.code));
+    select.innerHTML = '';
+    store.listLocations().forEach((loc) => {
+      const opt = document.createElement('option');
+      opt.value = loc.code;
+      opt.textContent = occupiedCodes.has(loc.code) ? `${loc.code} (occupied)` : loc.code;
+      select.appendChild(opt);
+    });
+    if (current && [...select.options].some((o) => o.value === current)) select.value = current;
+  }
+
+  // Part Number suggestions for the same form, sourced from the Items
+  // catalog (Tab 9) so manual entry doesn't require retyping/copy-pasting
+  // a part number that's already on file — purely a convenience, any value
+  // can still be typed in.
+  function renderItemCatalogDatalist() {
+    const datalist = document.getElementById('itemCatalogDatalist');
+    if (!datalist) return;
+    datalist.innerHTML = (store.data.itemCatalog || []).map((it) =>
+      `<option value="${escapeHtml(it.partNumber)}">${escapeHtml(it.description || '')}</option>`
+    ).join('');
+  }
+
+  // ---------------- Add Inventory Manually (part of Tab 7: Inventory) ----
+  (function setupAddInventoryForm() {
+    const form = document.getElementById('formAddInventory');
+    const errorEl = document.getElementById('invAddError');
+    if (!form) return;
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+    function clearError() {
+      errorEl.hidden = true;
+      errorEl.textContent = '';
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearError();
+      const code = document.getElementById('invAddLocationCode').value;
+      const lpn = document.getElementById('invAddLpn').value.trim();
+      const partNumber = document.getElementById('invAddPartNumber').value.trim();
+      const quantity = Number(document.getElementById('invAddQuantity').value) || 1;
+
+      const loc = store.listLocations().find((l) => l.code === code);
+      if (!loc) { showError('Pick a location — none are defined yet (add a rack on Tab 5 first).'); return; }
+      if (!partNumber) { showError('Enter a part number.'); return; }
+      if (quantity < 1) { showError('Quantity must be at least 1.'); return; }
+
+      store.addInventoryLine(loc, { lpn, partNumber, quantity });
+
+      // Leave the location picked (adding a second part number to the same
+      // pallet is a common next action) but clear the per-item fields.
+      document.getElementById('invAddLpn').value = '';
+      document.getElementById('invAddPartNumber').value = '';
+      document.getElementById('invAddQuantity').value = '1';
+      document.getElementById('invAddPartNumber').focus();
+    });
+  })();
+
   document.getElementById('btnExportLocations').addEventListener('click', () => {
     if (typeof XLSX === 'undefined') { alert('The Excel library did not load — check your connection and try again.'); return; }
     const locations = store.listLocations();
@@ -2411,6 +2483,8 @@
     renderRacksTable();
     renderInventoryGate();
     renderInventorySummary();
+    renderInventoryLocationOptions();
+    renderItemCatalogDatalist();
     renderInventoryTable();
     renderLocationBarcodesTable();
     renderItemsTable();

@@ -1133,6 +1133,52 @@ class Store {
     this.notify();
   }
 
+  // Adds/updates one content line at one location — the manual, one-at-a-
+  // time counterpart to setInventory()'s bulk replace from an Excel import.
+  // `loc` is one of the location descriptors from listLocations() (has
+  // rackId/bayIndex/levelIndex/locationIndex/code/etc). If that location is
+  // already occupied, this appends a new content line (or overwrites the
+  // quantity of a matching part number already there) — the same "several
+  // rows, one Location Code" shape a mixed pallet has in the Excel import.
+  // If it's unoccupied, this creates a new inventory record for it.
+  addInventoryLine(loc, { lpn, partNumber, quantity } = {}) {
+    if (this.isLocked()) return;
+    if (!loc || !loc.code) return;
+    const pn = String(partNumber || '').trim();
+    if (!pn) return;
+    const qty = Math.max(1, Number(quantity) || 1);
+    const trimmedLpn = String(lpn || '').trim();
+    if (!Array.isArray(this.data.inventory)) this.data.inventory = [];
+
+    const existing = this.data.inventory.find((inv) => inv.code === loc.code);
+    if (existing) {
+      if (!Array.isArray(existing.contents)) existing.contents = [];
+      const line = existing.contents.find((c) => c.partNumber === pn);
+      if (line) {
+        line.quantity = qty; // re-adding the same part number overwrites the quantity rather than stacking it
+      } else {
+        existing.contents.push({ partNumber: pn, quantity: qty });
+      }
+      if (trimmedLpn) existing.lpn = trimmedLpn; // blank = keep whatever LPN the location already has
+    } else {
+      this.data.inventory.push({
+        id: uid('inv'),
+        code: loc.code,
+        rackId: loc.rackId,
+        rackName: loc.rackName,
+        bayIndex: loc.bayIndex,
+        bayLabel: loc.bayLabel,
+        levelIndex: loc.levelIndex,
+        levelNumber: loc.levelNumber,
+        locationIndex: loc.locationIndex,
+        locationLabel: loc.locationLabel,
+        lpn: trimmedLpn || loc.code,
+        contents: [{ partNumber: pn, quantity: qty }]
+      });
+    }
+    this.notify();
+  }
+
   // Adds or overwrites an item catalog entry (keyed by partNumber). Used by
   // the Items tab's add/edit form — editing an existing part number just
   // calls this again with the new fields, no separate update method needed.

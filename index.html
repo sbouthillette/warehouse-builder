@@ -559,7 +559,7 @@
           <button type="button" id="btnView3dReset" class="btn btn-ghost">Reset View</button>
           <button type="button" id="btnView3dTop" class="btn btn-ghost">Top View</button>
           <button type="button" id="btnView3dIso" class="btn btn-ghost">Isometric View</button>
-          <button type="button" id="btnToggleLabels" class="btn btn-ghost">Hide Labels</button>
+          <button type="button" id="btnToggleLabels" class="btn btn-ghost">Show Labels</button>
         </div>
         <div id="threeContainer" class="three-wrap">
           <span class="scale-chip">Grid = 1 m</span>
@@ -583,6 +583,28 @@
           </div>
 
           <div id="inventorySummary" class="card summary-card"></div>
+
+          <h2 class="section-heading">Add Inventory Manually</h2>
+          <p class="hint">Quicker than the Export/Import round trip for a one-off change. Pick an occupied location to add another part number to the same pallet (a mixed pallet) — otherwise it fills in that location's LPN and Part Number from scratch. LPN defaults to the location code if left blank, same as the Excel import.</p>
+          <form id="formAddInventory" class="card form-grid">
+            <label>Location Code
+              <select id="invAddLocationCode" required></select>
+            </label>
+            <label>LPN
+              <input type="text" id="invAddLpn" placeholder="Defaults to location code" />
+            </label>
+            <label>Part Number
+              <input type="text" id="invAddPartNumber" list="itemCatalogDatalist" placeholder="SKU-10023" required />
+            </label>
+            <label>Quantity
+              <input type="number" id="invAddQuantity" min="1" step="1" value="1" required />
+            </label>
+            <div class="form-actions full-row">
+              <button type="submit" class="btn btn-primary">Add to Inventory</button>
+            </div>
+            <p id="invAddError" class="access-error" hidden></p>
+          </form>
+          <datalist id="itemCatalogDatalist"></datalist>
 
           <div class="table-wrap">
             <table id="inventoryTable" class="data-table">
