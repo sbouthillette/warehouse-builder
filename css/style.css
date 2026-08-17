@@ -882,6 +882,18 @@ h2 {
   font-family: 'Barlow Condensed', sans-serif;
   color: var(--ink);
 }
+/* A short confirm-style dialog (e.g. Request a Full Demo) doesn't need the
+   default 560px width meant for tables/forms. */
+.modal-card-narrow { max-width: 420px; }
+/* Generic right-aligned Cancel/Confirm row, for any confirm-style modal. */
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
 #accessTable td:nth-child(2), #accessTable th:nth-child(2) { text-align: center; }
 #accessTable td:last-child, #accessTable th:last-child { text-align: right; width: 40px; }
 .access-add-form {

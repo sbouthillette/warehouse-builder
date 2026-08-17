@@ -109,6 +109,33 @@
     }
   })();
 
+  // ---------------- Request a Full Demo confirmation modal ----------------
+  // The header CTA no longer opens the visitor's email client on the first
+  // click — it's visible to every guest at all times, so an unprompted
+  // "your email app just opened" is a jarring, easy-to-fat-finger action.
+  // This confirms first; the actual mailto: link (personalized above, once
+  // /api/auth/me resolves) only fires after someone clicks "Open Email".
+  (function setupRequestDemoModal() {
+    const trigger = document.getElementById('btnRequestDemo');
+    const modal = document.getElementById('requestDemoModal');
+    if (!trigger || !modal) return;
+
+    trigger.addEventListener('click', (e) => {
+      e.preventDefault();
+      modal.hidden = false;
+    });
+    document.getElementById('btnCloseRequestDemoModal').addEventListener('click', () => { modal.hidden = true; });
+    document.getElementById('btnCancelRequestDemo').addEventListener('click', () => { modal.hidden = true; });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
+
+    document.getElementById('btnConfirmRequestDemo').addEventListener('click', () => {
+      modal.hidden = true;
+      // Navigate directly rather than trigger.click() — that would just
+      // re-enter the handler above and preventDefault again.
+      window.location.href = trigger.href;
+    });
+  })();
+
   // ---------------- Manage Access modal (admin-only) ----------------
   (function setupAccessModal() {
     const modal = document.getElementById('accessModal');
