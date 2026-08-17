@@ -47,3 +47,17 @@ The warehouse picker in the bar under the header lists all your saved warehouses
 - `manifest.json`, `sw.js`, `icons/` — PWA install/offline support (the service worker never caches `/api/*`, only the static app shell)
 
 See `SETUP_EMAIL_AUTH.md` for the email sign-in gate, the admin-only Manage Access panel, and the Visitor Log (who from your invite list has actually signed in — `sql/login_events.sql`, `api/admin/login-history.js`).
+
+## Set up "Schedule a Full Demo"
+
+The "Schedule a Full Demo" button in the top bar (visible to every signed-in visitor) opens a real scheduler via [Calendly](https://calendly.com) — a visitor picks an open slot and it's booked straight onto your calendar, no email back-and-forth. This goes through Calendly rather than the Google Calendar API directly so there's no Google Cloud project, OAuth app, or credentials to manage — Calendly already handles that on their end.
+
+1. Create a free Calendly account (or use an existing one) at [calendly.com](https://calendly.com).
+2. In Calendly, go to **Availability → Connected Calendars** and connect the Google Calendar you want demo bookings to land on (the same Google account behind `spatialisos.com`, if that's what you want people booking into). This is what lets Calendly know which slots are actually free.
+3. Create an event type for this — **Event Types → Create → One-on-One** — something like "Full Demo — 30 min," with whatever duration and buffer you want.
+4. Open that event type, click **Add to website → Copy link** (you don't need the embed code, just the link — e.g. `https://calendly.com/your-username/full-demo`).
+5. In `index.html`, find `id="btnScheduleDemo"` and replace its placeholder `href` with that link. Redeploy.
+
+That's it — no other code changes needed. The button opens Calendly's own popup scheduler (`js/main.js`, `setupScheduleDemoButton`), which loads via the `<script>`/`<link>` tags for `assets.calendly.com` already in `index.html`'s `<head>`. If a visitor is signed in, their email is passed to Calendly to prefill the booking form.
+
+To change the booking link later (a different event type, a different calendar), just update that one `href` — nothing else references it.

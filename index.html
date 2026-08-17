@@ -13,6 +13,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/style.css" />
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<!-- Powers the "Schedule a Full Demo" popup scheduler (js/main.js) — see
+     README.md for how to point it at your own Calendly event. -->
+<link href="https://assets.calendly.com/assets/external/widget.css" rel="stylesheet" />
+<script src="https://assets.calendly.com/assets/external/widget.js" async></script>
 </head>
 <body>
 <!-- Shown instead of the whole app below a phone-width viewport (see
@@ -48,7 +52,14 @@
     </div>
     <div class="topbar-actions">
       <span id="saveStatus" class="save-status">—</span>
-      <a id="btnRequestDemo" class="btn btn-primary" href="mailto:hello@spatialisos.com?subject=Request%20a%20Full%20Demo%20%E2%80%94%20Spatialis%20OS&amp;body=Hi%20Spatialis%20OS%20team%2C%0D%0A%0D%0AI've%20been%20exploring%20the%20Dynamic%20Spatial%20Model%20demo%20and%20would%20like%20to%20see%20a%20full%20demo%20of%20the%20platform.%0D%0A%0D%0A">Request a Full Demo</a>
+      <!-- REPLACE the href below with your own Calendly event's URL once
+           it exists (Calendly → your event type → "Add to website" → copy
+           the link) — see README.md, "Set up Schedule a Full Demo". Until
+           then this points at Calendly's own generic scheduling page,
+           which still works (it just isn't your event). js/main.js reads
+           this same href to open Calendly's popup widget, and falls back
+           to a plain navigation here if the widget script hasn't loaded. -->
+      <a id="btnScheduleDemo" class="btn btn-primary" href="https://calendly.com/sebastien-bouthillette-spatialisos/30min" target="_blank" rel="noopener noreferrer">Schedule a Full Demo</a>
       <button id="btnManageAccess" class="btn btn-ghost" hidden>Manage Access</button>
       <button id="btnVisitorLog" class="btn btn-ghost" hidden>Visitor Log</button>
       <button id="btnExport" class="btn btn-ghost" hidden>Export JSON</button>
@@ -735,20 +746,6 @@
       <button type="button" id="btnRefreshVisitorLog" class="btn btn-ghost">Refresh</button>
     </div>
     <p id="visitorLogError" class="access-error" hidden></p>
-  </div>
-</div>
-
-<div id="requestDemoModal" class="modal-overlay" hidden>
-  <div class="modal-card modal-card-narrow">
-    <div class="modal-header">
-      <h2>Request a Full Demo</h2>
-      <button type="button" id="btnCloseRequestDemoModal" class="icon-btn" title="Close">✕</button>
-    </div>
-    <p class="hint">This opens your email app with a message to the Spatialis OS team at <strong>hello@spatialisos.com</strong>, asking for a full demo of the platform.</p>
-    <div class="modal-actions">
-      <button type="button" id="btnCancelRequestDemo" class="btn btn-ghost">Cancel</button>
-      <button type="button" id="btnConfirmRequestDemo" class="btn btn-primary">Open Email</button>
-    </div>
   </div>
 </div>
 

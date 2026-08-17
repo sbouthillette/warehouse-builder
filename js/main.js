@@ -101,41 +101,38 @@
       // this spot instead.
       document.getElementById('btnVisitWebsite').hidden = true;
     }
-    // Personalize the "Request a Full Demo" mailto with who's asking, once
-    // we know it — the static href in index.html is a fine fallback for
-    // the brief moment before this resolves (or if it fails).
-    const demoBtn = document.getElementById('btnRequestDemo');
-    if (demoBtn && email) {
-      const subject = 'Request a Full Demo — Spatialis OS';
-      const body = `Hi Spatialis OS team,\n\nI've been exploring the Dynamic Spatial Model demo (signed in as ${email}) and would like to see a full demo of the platform.\n\n`;
-      demoBtn.href = `mailto:hello@spatialisos.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    }
+    // Prefill the Calendly popup (see setupScheduleDemoButton below) with
+    // who's asking, once we know it — Calendly's own booking form still
+    // asks for name/email regardless, this just saves a retype.
+    window.__scheduleDemoPrefillEmail = email || null;
   })();
 
-  // ---------------- Request a Full Demo confirmation modal ----------------
-  // The header CTA no longer opens the visitor's email client on the first
-  // click — it's visible to every guest at all times, so an unprompted
-  // "your email app just opened" is a jarring, easy-to-fat-finger action.
-  // This confirms first; the actual mailto: link (personalized above, once
-  // /api/auth/me resolves) only fires after someone clicks "Open Email".
-  (function setupRequestDemoModal() {
-    const trigger = document.getElementById('btnRequestDemo');
-    const modal = document.getElementById('requestDemoModal');
-    if (!trigger || !modal) return;
+  // ---------------- "Schedule a Full Demo" (Calendly) ----------------
+  // Opens a real scheduler (Calendly's popup widget) against the Spatialis
+  // OS calendar, rather than drafting an email — see README.md, "Set up
+  // Schedule a Full Demo", for how the button's href gets pointed at an
+  // actual Calendly event. Nothing is booked by the click itself: Calendly
+  // opens its own scheduling UI, and a visitor still has to pick a slot
+  // and explicitly confirm inside it — so this doesn't need a separate
+  // "are you sure" step of its own the way the old mailto button did.
+  (function setupScheduleDemoButton() {
+    const trigger = document.getElementById('btnScheduleDemo');
+    if (!trigger) return;
 
     trigger.addEventListener('click', (e) => {
       e.preventDefault();
-      modal.hidden = false;
-    });
-    document.getElementById('btnCloseRequestDemoModal').addEventListener('click', () => { modal.hidden = true; });
-    document.getElementById('btnCancelRequestDemo').addEventListener('click', () => { modal.hidden = true; });
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
-
-    document.getElementById('btnConfirmRequestDemo').addEventListener('click', () => {
-      modal.hidden = true;
-      // Navigate directly rather than trigger.click() — that would just
-      // re-enter the handler above and preventDefault again.
-      window.location.href = trigger.href;
+      const opts = { url: trigger.href };
+      if (window.__scheduleDemoPrefillEmail) {
+        opts.prefill = { email: window.__scheduleDemoPrefillEmail };
+      }
+      if (window.Calendly && typeof window.Calendly.initPopupWidget === 'function') {
+        window.Calendly.initPopupWidget(opts);
+      } else {
+        // The widget script didn't load (offline, blocked by an ad
+        // blocker, etc.) — fall back to a plain navigation to the same
+        // Calendly page in a new tab rather than doing nothing.
+        window.open(trigger.href, '_blank', 'noopener');
+      }
     });
   })();
 
