@@ -14,12 +14,28 @@ const infoPanel = document.getElementById('inventoryInfoPanel');
 
 let renderer, scene, camera, controls, group;
 let ready = false;
-// Set true if a browser/environment can't create a WebGL context at all
-// (hardware acceleration disabled, a sandboxed/virtualized session, a GPU
-// driver crash, etc.) — see init()'s try/catch below. Once true, init() and
-// render() become permanent no-ops instead of repeatedly throwing.
+// Set true once init() has exhausted its retries (see INIT_MAX_ATTEMPTS
+// below) without managing to create a WebGL context at all — hardware
+// acceleration disabled, a sandboxed/virtualized session, a GPU driver
+// crash, etc. Once true, init() and render() become permanent no-ops
+// (short of the user clicking "Retry 3D View" in showWebglUnavailable(),
+// which resets it) instead of repeatedly throwing.
 let webglFailed = false;
 let lastStore = null; // set on each render(); used to look up item catalog entries for the click-info panel
+
+// `new THREE.WebGLRenderer()` throwing on the very first attempt is often
+// transient, not a real "this browser can't do WebGL" situation — most
+// commonly Chrome's GPU process hasn't finished (re)starting yet (right
+// after browser launch, waking from sleep, or recovering from an earlier
+// GPU-process crash). That's exactly the situation people work around by
+// toggling hardware acceleration off and back on in Chrome's settings —
+// which fixes it only because it forces a full browser restart, giving the
+// GPU process a clean slate. A few retries with a short delay gives that
+// same clean slate a chance to happen on its own, without asking anyone to
+// dig through browser settings.
+let initAttempts = 0;
+const INIT_MAX_ATTEMPTS = 4;
+const INIT_RETRY_DELAY_MS = 600;
 
 // Every occupancy box (Inventory tab) built this render — the click handler
 // raycasts against just these, not the whole scene, so clicking a beam or
@@ -109,6 +125,25 @@ function init() {
     resizeRenderer();
     container.appendChild(renderer.domElement);
 
+    // A context can also be lost *after* a successful start — a GPU driver
+    // crash or reset mid-session, the OS reclaiming GPU memory, a laptop
+    // switching between integrated/discrete GPUs, etc. Without handling
+    // this the canvas just silently freezes/blanks with no way back short
+    // of a full page reload. calling preventDefault() on the loss event
+    // tells the browser we intend to try to recover instead of treating
+    // the context as permanently dead, and 'webglcontextrestored' is where
+    // we actually rebuild everything once the browser gives us a new one.
+    renderer.domElement.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      console.warn('3D view: WebGL context lost — waiting for it to be restored…');
+      ready = false;
+    }, false);
+    renderer.domElement.addEventListener('webglcontextrestored', () => {
+      console.warn('3D view: WebGL context restored — rebuilding the scene.');
+      teardown();
+      rebuild();
+    }, false);
+
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
@@ -127,33 +162,82 @@ function init() {
     group = new THREE.Group();
     scene.add(group);
 
-    window.addEventListener('resize', () => {
-      resizeRenderer();
-    });
+    // Named (not inline) so teardown() can remove exactly this listener —
+    // otherwise a context-loss/restore cycle (or a few auto-retries) would
+    // pile up a duplicate 'resize' listener on `window` every time init()
+    // re-runs, each one harmless on its own but wasteful to leave stacking.
+    window.addEventListener('resize', onWindowResize);
 
     ready = true;
+    initAttempts = 0; // this init cycle succeeded — a later failure (e.g. after a context loss) gets its own fresh set of retries
     animate();
   } catch (err) {
-    // Most commonly: WebGL is unavailable in this browser/environment
-    // (hardware acceleration disabled, a sandboxed/virtualized session, a
-    // GPU driver crash, etc.) — new THREE.WebGLRenderer() throws instead of
-    // failing gracefully, and that exception was previously uncaught,
-    // leaving this tab silently blank with no explanation. There's
-    // genuinely nothing to render to in that case, so show a clear message
-    // instead, and make every other 3D entry point a safe no-op from here on.
-    console.warn('3D view unavailable — could not create a WebGL context:', err);
+    initAttempts++;
+    if (initAttempts < INIT_MAX_ATTEMPTS) {
+      // Most likely a transient failure — the GPU process not being ready
+      // yet, not a real "this browser can't do WebGL" situation. See the
+      // comment on initAttempts above. Silent by design (console.warn only)
+      // so a routine retry-and-recover doesn't flash an error at anyone.
+      console.warn(`3D view: WebGL context creation failed (attempt ${initAttempts}/${INIT_MAX_ATTEMPTS}), retrying…`, err);
+      setTimeout(rebuild, INIT_RETRY_DELAY_MS * initAttempts);
+      return;
+    }
+    // Every retry failed — genuinely nothing to render to right now. Show a
+    // clear message instead of leaving the tab silently blank, with a way
+    // to try again in-place rather than requiring a full page reload.
+    console.warn('3D view unavailable — could not create a WebGL context after retrying:', err);
     webglFailed = true;
     showWebglUnavailable(container);
   }
 }
 
+// Re-attempts a full rebuild against whatever warehouse was last shown, so
+// the retry timer, the context-restored recovery, and the manual "Retry 3D
+// View" button all recover the exact same way a normal first render()
+// call already does (build the scene right after init() succeeds) rather
+// than needing their own special-cased rebuild logic. Falls back to a bare
+// init() only in the edge case where nothing has ever called render() yet.
+function rebuild() {
+  if (lastStore) render(lastStore); else init();
+}
+
+// Tears down whatever init() built (renderer, canvas, event listeners via
+// the canvas element being discarded) so init() can be safely called again
+// from scratch — used when a lost WebGL context comes back and the whole
+// scene needs rebuilding against the new context.
+function teardown() {
+  ready = false;
+  window.removeEventListener('resize', onWindowResize);
+  if (renderer) {
+    renderer.dispose();
+    if (renderer.domElement && renderer.domElement.parentNode) {
+      renderer.domElement.parentNode.removeChild(renderer.domElement);
+    }
+  }
+  renderer = null; scene = null; camera = null; controls = null; group = null;
+  inventoryBoxes = [];
+  labelSprites = [];
+}
+
 function showWebglUnavailable(el) {
   if (!el) return;
   el.innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:24px;' +
-    'text-align:center;color:#5f5e5a;font:14px sans-serif;">3D view unavailable — this browser (or its ' +
-    'current settings) blocked WebGL, which the 3D view needs. Try a different browser, or check that ' +
-    'hardware acceleration isn’t disabled in your browser’s settings.</div>';
+    '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;' +
+    'height:100%;padding:24px;text-align:center;color:#5f5e5a;font:14px sans-serif;">' +
+    '<div>3D view unavailable — this browser (or its current settings) blocked WebGL, which the 3D view needs.</div>' +
+    '<button type="button" id="btnRetryWebgl" style="padding:8px 18px;font:14px sans-serif;border:none;' +
+    'border-radius:6px;background:#1a1a1a;color:#fff;cursor:pointer;">Retry 3D View</button>' +
+    '<div style="font-size:12px;max-width:420px;">Still stuck? In Chrome, toggling <strong>Settings → System → ' +
+    '“Use graphics acceleration when available”</strong> off and back on (this restarts the browser) often ' +
+    'clears it up — or try a different browser.</div></div>';
+  const btn = el.querySelector('#btnRetryWebgl');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      webglFailed = false;
+      initAttempts = 0;
+      rebuild();
+    });
+  }
 }
 
 function containerAspect() {
@@ -169,6 +253,10 @@ function resizeRenderer() {
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+}
+
+function onWindowResize() {
+  resizeRenderer();
 }
 
 function animate() {
@@ -982,9 +1070,15 @@ function rotateRight() { rotateBy(-ROTATE_STEP); }
 
 function render(store) {
   if (webglFailed) return;
+  // Remembered up front — before we know whether init() will succeed
+  // synchronously — so that if WebGL context creation is mid-retry (or a
+  // context loss is mid-recovery), init() has a store to rebuild once it
+  // does succeed, instead of coming back to an empty scene the next time
+  // it's ready. Also doubles as what the click-info panel looks up item
+  // catalog entries against.
+  lastStore = store;
   if (!ready) init();
   if (!group) return;
-  lastStore = store; // remembered so the click-info panel can look up item catalog entries later
   clearGroup();
   const wh = store.data.warehouse;
   if (!wh || !wh.shape || wh.shape.length < 3) return;
