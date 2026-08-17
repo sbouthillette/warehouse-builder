@@ -59,7 +59,7 @@ function showInventoryInfo(inv) {
     : '';
   infoPanel.innerHTML = `
     <button type="button" class="info-panel-close" aria-label="Close">×</button>
-    <div class="info-panel-title">LPN ${escapeHtmlLocal(inv.lpn)}</div>
+    <div class="info-panel-title">${inv.lpn ? `LPN ${escapeHtmlLocal(inv.lpn)}` : 'Loose boxes (no LPN)'}</div>
     <div class="info-panel-row"><span>Location</span><span>${escapeHtmlLocal(inv.code)}</span></div>
     ${barcodeRow}
     <div class="info-panel-row"><span>Rack</span><span>${escapeHtmlLocal(inv.rackName)}</span></div>
@@ -599,6 +599,40 @@ function addPalletBase(parent, mat, cx, floorY, cz, w, d, totalH) {
   return { topY: floorY + runnerH + deckH, deckMesh: deck };
 }
 
+// Builds a small stylized pile of loose boxes — no pallet base underneath —
+// used instead of addPalletBase() + one goods box whenever a location's LPN
+// is blank (see Store.addInventoryLine()'s doc comment: LPN present means
+// "one palletized unit load", blank means "loose boxes piled here"). A 2x2
+// base layer fills most of the footprint (w x d), with per-box height
+// varied by a fixed pattern — not random — so the pile reads as stacked
+// cartons rather than one uniform block, but looks identical on every
+// render of the same location. Returns every box mesh created (already
+// added to `parent`) so the caller can register each one for raycasting —
+// clicking any box in the pile should open the same info panel.
+const BOX_PILE_HEIGHT_SCALE = [1, 0.75, 0.9, 0.6];
+function addBoxPile(parent, mat, cx, cz, w, d, floorY, availableH) {
+  const cols = 2, rows = 2;
+  const gap = Math.min(0.06, w * 0.08, d * 0.08);
+  const boxW = Math.max((w - gap * (cols + 1)) / cols, 0.1);
+  const boxD = Math.max((d - gap * (rows + 1)) / rows, 0.1);
+  const maxH = Math.max(availableH, 0.08);
+  const boxes = [];
+  let i = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const bx = cx - w / 2 + gap + boxW / 2 + c * (boxW + gap);
+      const bz = cz - d / 2 + gap + boxD / 2 + r * (boxD + gap);
+      const bh = Math.max(Math.min(maxH * BOX_PILE_HEIGHT_SCALE[i % BOX_PILE_HEIGHT_SCALE.length], maxH), 0.05);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(boxW, bh, boxD), mat);
+      box.position.set(bx, floorY + bh / 2, bz);
+      parent.add(box);
+      boxes.push(box);
+      i++;
+    }
+  }
+  return boxes;
+}
+
 function buildRacks(racks, store) {
   // Standard pallet-racking colors: blue upright frames, orange load beams,
   // steel-gray solid shelf decks (loose-stock levels), tan occupancy boxes
@@ -774,6 +808,13 @@ function buildRacks(racks, store) {
             // shows a short one, and nothing ever visually clips the beam.
             const availableH = Math.max(openTop - floorY - TOP_CLEARANCE_M, 0.05);
 
+            // Whether this location renders as one palletized unit load or
+            // a pile of loose boxes is driven entirely by whether it has an
+            // LPN — see Store.addInventoryLine()'s doc comment. A pallet
+            // base only ever gets built in the `hasPallet` branch below;
+            // loose boxes sit directly on the level's floor either way.
+            const hasPallet = !!inv.lpn;
+
             let boxBottomY, boxH, cellD;
             if (lv.levelType === 'shelf') {
               // Loose stock / cartons on a shelf — just the goods, confined
@@ -781,7 +822,7 @@ function buildRacks(racks, store) {
               cellD = Math.min(PALLET_FOOTPRINT_M, uD * 0.9);
               boxBottomY = floorY;
               boxH = availableH;
-            } else {
+            } else if (hasPallet) {
               // Pallet location — a real 1165x1165x150mm pallet, at its
               // true depth even when that's deeper than the rack frame
               // (frames are commonly 900mm deep). A forklift driver
@@ -793,15 +834,29 @@ function buildRacks(racks, store) {
               const { topY } = addPalletBase(rackGroup, palletMat, segCenter, floorY, uD / 2, cellW, cellD, baseH);
               boxBottomY = topY;
               boxH = Math.max(availableH - baseH, 0.05);
+            } else {
+              // No LPN, no pallet base — loose boxes sit straight on the
+              // beams' floor, same footprint a pallet would have used.
+              cellD = PALLET_FOOTPRINT_M;
+              boxBottomY = floorY;
+              boxH = availableH;
             }
 
-            const box = new THREE.Mesh(new THREE.BoxGeometry(cellW * 0.95, boxH, cellD * 0.95), occupiedMat);
-            box.position.set(segCenter, boxBottomY + boxH / 2, uD / 2);
-            box.userData.inventory = inv;
-            inventoryBoxes.push(box);
-            rackGroup.add(box);
+            if (hasPallet) {
+              const box = new THREE.Mesh(new THREE.BoxGeometry(cellW * 0.95, boxH, cellD * 0.95), occupiedMat);
+              box.position.set(segCenter, boxBottomY + boxH / 2, uD / 2);
+              box.userData.inventory = inv;
+              inventoryBoxes.push(box);
+              rackGroup.add(box);
+            } else {
+              const pile = addBoxPile(rackGroup, occupiedMat, segCenter, uD / 2, cellW * 0.95, cellD * 0.95, boxBottomY, boxH);
+              pile.forEach((box) => {
+                box.userData.inventory = inv;
+                inventoryBoxes.push(box);
+              });
+            }
 
-            const partTag = makeTextSprite(inv.lpn);
+            const partTag = makeTextSprite(inv.lpn || 'Boxes');
             partTag.scale.set(0.6, 0.25, 1);
             partTag.position.set(segCenter, boxBottomY + boxH + 0.18, uD / 2);
             rackGroup.add(partTag);

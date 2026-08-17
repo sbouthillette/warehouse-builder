@@ -2048,18 +2048,22 @@
 
   // Location Code dropdown for the "Add Inventory Manually" form. Lists
   // every addressable location (same source as the Excel export), marking
-  // ones that already have contents so picking one there reads as "add
-  // another part number to this pallet" rather than "create a new one".
+  // ones that already have contents as "(pallet)" or "(boxes)" — matches
+  // the LPN-present-vs-blank distinction store.addInventoryLine() enforces,
+  // so it's obvious up front whether picking that location means "add
+  // another part number to the pallet already there" (needs its LPN) or
+  // "pile on another box" (leave LPN blank), or that it's blocked outright.
   function renderInventoryLocationOptions() {
     const select = document.getElementById('invAddLocationCode');
     if (!select) return;
     const current = select.value;
-    const occupiedCodes = new Set(store.data.inventory.map((inv) => inv.code));
+    const occupiedByCode = new Map(store.data.inventory.map((inv) => [inv.code, inv]));
     select.innerHTML = '';
     store.listLocations().forEach((loc) => {
       const opt = document.createElement('option');
       opt.value = loc.code;
-      opt.textContent = occupiedCodes.has(loc.code) ? `${loc.code} (occupied)` : loc.code;
+      const occ = occupiedByCode.get(loc.code);
+      opt.textContent = occ ? `${loc.code} (${occ.lpn ? `pallet ${occ.lpn}` : 'boxes'})` : loc.code;
       select.appendChild(opt);
     });
     if (current && [...select.options].some((o) => o.value === current)) select.value = current;
@@ -2105,11 +2109,13 @@
       if (!partNumber) { showError('Enter a part number.'); return; }
       if (quantity < 1) { showError('Quantity must be at least 1.'); return; }
 
-      store.addInventoryLine(loc, { lpn, partNumber, quantity });
+      const result = store.addInventoryLine(loc, { lpn, partNumber, quantity });
+      if (!result.ok) { showError(result.error); return; }
 
-      // Leave the location picked (adding a second part number to the same
-      // pallet is a common next action) but clear the per-item fields.
-      document.getElementById('invAddLpn').value = '';
+      // Leave the location AND LPN as entered (adding another part number
+      // to the same pallet — or piling on another box, LPN left blank — is
+      // a common next action; re-submitting as-is repeats cleanly) and only
+      // clear the per-item fields.
       document.getElementById('invAddPartNumber').value = '';
       document.getElementById('invAddQuantity').value = '1';
       document.getElementById('invAddPartNumber').focus();
@@ -2208,18 +2214,23 @@
         });
 
         const matched = [];
-        const lpnLocations = new Map(); // lpn -> Set of codes it appears at
+        const lpnLocations = new Map(); // lpn -> Set of codes it appears at (blank LPNs aren't tracked here — see below)
         let mismatchedLpnGroups = 0;
-        let autoAssignedLpn = 0;
+        let boxesOnlyCount = 0;
 
         groups.forEach((groupRows, code) => {
           const loc = byCode.get(code);
-          // Resolve one canonical LPN for the group: first non-blank value wins.
+          // Resolve one canonical LPN for the group: first non-blank value
+          // wins. Left blank on purpose when the sheet has none — that's
+          // not a data gap to paper over, it's meaningful: a blank LPN
+          // means loose boxes piled in that location rather than one
+          // palletized unit load, and the 3D view (three3d.js) renders it
+          // that way. Don't fall back to the location code here.
           const lpnValues = groupRows.map((r) => String(r['LPN'] || '').trim()).filter(Boolean);
           const uniqueLpns = [...new Set(lpnValues)];
-          let lpn = uniqueLpns[0] || '';
+          const lpn = uniqueLpns[0] || '';
           if (uniqueLpns.length > 1) mismatchedLpnGroups++; // rows disagree on LPN — kept the first, flagged below
-          if (!lpn) { lpn = code; autoAssignedLpn++; } // no LPN given — fall back to the location code so it still displays sensibly
+          if (!lpn) boxesOnlyCount++;
 
           const contents = groupRows.map((r) => ({
             partNumber: String(r['Part Number'] || '').trim(),
@@ -2227,8 +2238,13 @@
           })).filter((line) => line.partNumber);
           if (!contents.length) return;
 
-          if (!lpnLocations.has(lpn)) lpnLocations.set(lpn, new Set());
-          lpnLocations.get(lpn).add(code);
+          // Duplicate-LPN detection only makes sense for actual pallet
+          // IDs — plenty of locations legitimately share a blank LPN (each
+          // is just its own pile of loose boxes, not the same unit load).
+          if (lpn) {
+            if (!lpnLocations.has(lpn)) lpnLocations.set(lpn, new Set());
+            lpnLocations.get(lpn).add(code);
+          }
 
           matched.push({
             id: Model.uid('inv'),
@@ -2252,7 +2268,7 @@
         let msg = `Imported ${matched.length} occupied location(s).`;
         if (unmatchedRows) msg += ` ${unmatchedRows} row(s) had a location code that doesn't match the current model (renamed rack? changed bay count?) and were skipped — try re-exporting the location list.`;
         if (mismatchedLpnGroups) msg += ` ${mismatchedLpnGroups} location(s) had rows with different LPN values for the same location — used the first one found for each.`;
-        if (autoAssignedLpn) msg += ` ${autoAssignedLpn} location(s) had no LPN filled in — used the location code as a placeholder LPN.`;
+        if (boxesOnlyCount) msg += ` ${boxesOnlyCount} location(s) had no LPN filled in — imported as loose boxes rather than a pallet.`;
         if (duplicateLpns) msg += ` Warning: ${duplicateLpns} LPN(s) appear at more than one location — an LPN should normally be a single physical unit load in one place.`;
         if (barcodeChanges) msg += ` Updated barcodes for ${barcodeChanges} location(s).`;
         alert(msg);

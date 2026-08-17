@@ -1136,21 +1136,42 @@ class Store {
   // Adds/updates one content line at one location — the manual, one-at-a-
   // time counterpart to setInventory()'s bulk replace from an Excel import.
   // `loc` is one of the location descriptors from listLocations() (has
-  // rackId/bayIndex/levelIndex/locationIndex/code/etc). If that location is
-  // already occupied, this appends a new content line (or overwrites the
-  // quantity of a matching part number already there) — the same "several
-  // rows, one Location Code" shape a mixed pallet has in the Excel import.
-  // If it's unoccupied, this creates a new inventory record for it.
+  // rackId/bayIndex/levelIndex/locationIndex/code/etc).
+  //
+  // LPN is optional and means two different physical things to the 3D view
+  // (see three3d.js): give it an LPN and the location renders as one
+  // palletized unit load; leave it blank and it renders as loose boxes
+  // piled in the location instead. A location can hold exactly one pallet,
+  // or any number of loose-box content lines, but never both — so this
+  // refuses to add a *second*, different pallet on top of an existing one
+  // (that's the case the caller should surface as an error). Submitting the
+  // SAME LPN as the location's existing pallet is how a mixed pallet grows
+  // (another part number added to that one physical unit load) — that's
+  // allowed and falls through to the same append-a-content-line logic as
+  // piling on more loose boxes.
+  //
+  // Returns { ok: true } on success, or { ok: false, error } when refused
+  // (locked warehouse, bad input, or the one-pallet-per-location rule)
+  // so the caller (the Add Inventory Manually form) can show why.
   addInventoryLine(loc, { lpn, partNumber, quantity } = {}) {
-    if (this.isLocked()) return;
-    if (!loc || !loc.code) return;
+    if (this.isLocked()) return { ok: false, error: 'This warehouse is locked.' };
+    if (!loc || !loc.code) return { ok: false, error: 'Pick a location.' };
     const pn = String(partNumber || '').trim();
-    if (!pn) return;
+    if (!pn) return { ok: false, error: 'Enter a part number.' };
     const qty = Math.max(1, Number(quantity) || 1);
     const trimmedLpn = String(lpn || '').trim();
     if (!Array.isArray(this.data.inventory)) this.data.inventory = [];
 
     const existing = this.data.inventory.find((inv) => inv.code === loc.code);
+    if (existing && existing.lpn && trimmedLpn !== existing.lpn) {
+      return {
+        ok: false,
+        error: trimmedLpn
+          ? `${loc.code} already has a pallet (LPN ${existing.lpn}). Use that same LPN to add another part number to it, or remove the existing entry first to replace it.`
+          : `${loc.code} already has a pallet (LPN ${existing.lpn}) — a location can't hold a pallet and loose boxes at once. Remove it first, or enter its LPN to add another part number to it.`
+      };
+    }
+
     if (existing) {
       if (!Array.isArray(existing.contents)) existing.contents = [];
       const line = existing.contents.find((c) => c.partNumber === pn);
@@ -1159,7 +1180,7 @@ class Store {
       } else {
         existing.contents.push({ partNumber: pn, quantity: qty });
       }
-      if (trimmedLpn) existing.lpn = trimmedLpn; // blank = keep whatever LPN the location already has
+      if (trimmedLpn) existing.lpn = trimmedLpn; // blank = keep whatever LPN (or lack of one) the location already has
     } else {
       this.data.inventory.push({
         id: uid('inv'),
@@ -1172,11 +1193,12 @@ class Store {
         levelNumber: loc.levelNumber,
         locationIndex: loc.locationIndex,
         locationLabel: loc.locationLabel,
-        lpn: trimmedLpn || loc.code,
+        lpn: trimmedLpn, // blank on purpose — see the doc comment above
         contents: [{ partNumber: pn, quantity: qty }]
       });
     }
     this.notify();
+    return { ok: true };
   }
 
   // Adds or overwrites an item catalog entry (keyed by partNumber). Used by

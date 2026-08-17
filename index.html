@@ -570,7 +570,7 @@
       <!-- TAB 7: INVENTORY -->
       <section id="tab-inventory" class="tab-panel">
         <h2>Inventory</h2>
-        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, then in Excel fill in an LPN (License Plate Number — the ID of the physical pallet/tote/carton) plus a Part Number and Quantity next to each occupied location, and import it back — occupied locations show up as boxes in the 3D view. For a mixed pallet carrying more than one part number, add extra rows with the same Location Code and LPN, one row per part number. The export also includes a Barcode column (pre-filled with the location code, or its current barcode) — edit it and re-import to bulk-update location barcodes, independent of occupancy; a blank cell clears that location's barcode. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
+        <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, then in Excel fill in a Part Number and Quantity next to each occupied location (and an LPN, if it's palletized), and import it back. LPN is optional and controls how a location renders in the 3D view: give it an LPN and it shows up as a single palletized unit load; leave LPN blank and it shows up as loose boxes piled in the location instead. For a mixed pallet carrying more than one part number, add extra rows with the same Location Code and LPN, one row per part number — a location can hold one pallet, or any number of loose-box rows, but not both. The export also includes a Barcode column (pre-filled with the location code, or its current barcode) — edit it and re-import to bulk-update location barcodes, independent of occupancy; a blank cell clears that location's barcode. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
         <div id="inventoryGate" class="gate-message"></div>
         <div id="inventoryUI" hidden>
           <div class="form-actions">
@@ -585,13 +585,13 @@
           <div id="inventorySummary" class="card summary-card"></div>
 
           <h2 class="section-heading">Add Inventory Manually</h2>
-          <p class="hint">Quicker than the Export/Import round trip for a one-off change. Pick an occupied location to add another part number to the same pallet (a mixed pallet) — otherwise it fills in that location's LPN and Part Number from scratch. LPN defaults to the location code if left blank, same as the Excel import.</p>
+          <p class="hint">Quicker than the Export/Import round trip for a one-off change. LPN is optional: fill it in to add (or add another part number to) a palletized unit load — the 3D view shows a pallet; leave it blank to pile loose boxes into the location instead — the 3D view shows individual boxes. A location can hold one pallet, or any number of loose-box entries, but not both — if it already has a pallet, you'll need to use that same LPN (to add to it) or remove the existing entry first.</p>
           <form id="formAddInventory" class="card form-grid">
             <label>Location Code
               <select id="invAddLocationCode" required></select>
             </label>
-            <label>LPN
-              <input type="text" id="invAddLpn" placeholder="Defaults to location code" />
+            <label>LPN <span class="hint" style="display:inline;margin:0;">(optional — blank = loose boxes)</span>
+              <input type="text" id="invAddLpn" placeholder="Leave blank for loose boxes" />
             </label>
             <label>Part Number
               <input type="text" id="invAddPartNumber" list="itemCatalogDatalist" placeholder="SKU-10023" required />
