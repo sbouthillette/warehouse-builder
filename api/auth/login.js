@@ -140,6 +140,45 @@ function formPage({ next, error }) {
 </body></html>`;
 }
 
+// Shown for ~1.5s right after a successful sign-in, before continuing on to
+// the app. Signing in redirected straight to `next` before this existed,
+// which gave a first-time visitor zero feedback that anything had
+// happened — the app can take a moment to load (3D scene, etc.), so a
+// silent redirect reads as "nothing happened," and the reported result was
+// people re-submitting the same email a second time to see if it "worked."
+// This page's whole job is to be an unmissable "yes, you're in" moment
+// before handing off to the app. Auto-continues via <meta refresh> (no JS
+// dependency) with a manual link as a fallback for anyone who doesn't want
+// to wait.
+function successPage({ next, email, isNewGuest }) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="refresh" content="1.5;url=${escapeHtml(next)}" />
+<title>Signed in — Dynamic Spatial Model Builder</title>
+<meta name="theme-color" content="#ffffff" />
+<link rel="icon" href="/icons/icon-192.png" />
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/style.css" />
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--sp-6); box-sizing: border-box; }
+  .auth-card { width: 100%; max-width: 400px; text-align: center; background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border-soft); border-radius: var(--radius-lg); padding: var(--sp-8) var(--sp-6); box-shadow: var(--glass-inset-highlight), var(--glass-shadow-lifted); box-sizing: border-box; }
+  .auth-check { width: 56px; height: 56px; border-radius: 50%; background: var(--status-success-bg); color: var(--status-success-text); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--sp-4); font-size: 28px; line-height: 1; }
+  .auth-card h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px; margin: 0 0 4px; color: var(--ink); }
+  .auth-card p.auth-tagline { margin: 0 0 var(--sp-6); font-size: 14px; color: var(--ink-secondary); }
+  .auth-footnote { margin: var(--sp-6) 0 0; font-size: 12px; color: var(--ink-secondary); }
+  a.btn { text-decoration: none; display: inline-block; }
+</style>
+</head><body>
+  <div class="auth-card">
+    <div class="auth-check">&#10003;</div>
+    <h1>You're in</h1>
+    <p class="auth-tagline">${isNewGuest ? `Guest access created for ${escapeHtml(email)}.` : `Signed in as ${escapeHtml(email)}.`}</p>
+    <a class="btn btn-primary" href="${escapeHtml(next)}">Continue to app &rarr;</a>
+    <p class="auth-footnote">Redirecting automatically&hellip;</p>
+  </div>
+</body></html>`;
+}
+
 export default async function handler(req, res) {
   const secret = process.env.SESSION_SECRET;
 
@@ -181,7 +220,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (!allowlist.has(lowerEmail)) {
+    const isNewGuest = !allowlist.has(lowerEmail);
+    if (isNewGuest) {
       // Self-serve guest access: anyone with a plausible email gets in as a
       // non-admin guest, automatically — see the file-level comment above.
       // `ON CONFLICT ... DO NOTHING` matters here: a race with another
@@ -209,8 +249,12 @@ export default async function handler(req, res) {
       'Set-Cookie',
       `${SESSION_COOKIE}=${sessionToken}; Path=/; Max-Age=${SESSION_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`
     );
-    res.writeHead(302, { Location: next });
-    res.end();
+    // Render an explicit "you're in" confirmation instead of a silent 302 —
+    // see the comment on successPage() above for why. The cookie is already
+    // set on this response, so the auto-redirect (or the manual link) lands
+    // signed in either way.
+    res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(successPage({ next, email: lowerEmail, isNewGuest }));
     return;
   }
 
