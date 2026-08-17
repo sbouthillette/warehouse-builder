@@ -1,183 +1,26 @@
-// api/auth/login.js — the whole sign-in gate: a branded HTML form asking
-// for an email address. Self-serve: an address that isn't already on the
-// `allowed_emails` table (see sql/allowed_emails.sql) gets auto-added here
-// as a non-admin guest and signed straight in — nobody has to approve them
-// first. Admins are the exception: those rows are seeded/promoted only via
-// the in-app "Manage Access" panel (api/admin/allowed-emails.js), never by
-// this self-serve path (see the `false` literal in the INSERT below).
+// api/auth/login.js — step 1 of the sign-in gate: a branded HTML form
+// asking for an email address, which on submit gets a one-time 6-digit
+// code emailed to it (see lib/mailer.js and lib/loginCodes.js). Step 2,
+// checking that code and actually signing someone in, is
+// api/auth/verify.js — this file never sets a session cookie and never
+// touches the `allowed_emails` table itself.
 //
-// IMPORTANT: this does NOT verify that the visitor actually owns the email
-// they type in — there's no confirmation link, no password, no external
-// identity provider. It only checks "is this a plausible email address".
-// That's a deliberate choice: this app is meant to be handed out as a
-// public demo link (e.g. emailed to prospects), so the goal is the lowest
-// possible friction to "look around," not real identity verification. It
-// does mean anyone who reaches this URL can create a guest session as
-// whatever email they type — don't put anything here you wouldn't want a
-// stranger to see or edit. Any warehouse you want protected from guest
-// editing should be locked with a password (the in-app Lock feature) —
-// this login gate is about who gets in the door, not what they can touch
-// once inside.
+// This code step exists specifically to keep bots and randomly-typed
+// addresses out: before it existed, typing *any* email-shaped string got
+// you a guest session immediately, no proof you owned that address. Now
+// getting in requires reading a code out of that inbox, which a bot
+// guessing addresses (or a human fat-fingering someone else's) can't do.
+//
+// Self-serve guest access is still the model — nobody has to be
+// pre-approved — it's just proven-self-serve now: an address that isn't
+// already on `allowed_emails` gets auto-added as a non-admin guest once
+// (and only once) its code is verified. Admins are the exception to that:
+// those rows are seeded/promoted only via the in-app "Manage Access" panel
+// (api/admin/allowed-emails.js), never by this self-serve path.
 import { sql } from '@vercel/postgres';
-import { signToken, SESSION_COOKIE, SESSION_MAX_AGE } from '../../lib/session.js';
-import { getAllowlist, invalidateAllowlistCache } from '../../lib/allowlist.js';
-
-// Best-effort visit logging for the admin-only "Visitor Log" panel (see
-// sql/login_events.sql and api/admin/login-history.js). Never let a
-// logging failure block someone from actually signing in — swallow and
-// move on.
-async function recordLoginEvent(req, email) {
-  try {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    const ip = (typeof forwardedFor === 'string' ? forwardedFor.split(',')[0].trim() : null)
-      || req.socket?.remoteAddress
-      || null;
-    await sql`
-      INSERT INTO login_events (email, user_agent, ip)
-      VALUES (${email}, ${req.headers['user-agent'] || null}, ${ip})
-    `;
-  } catch (err) {
-    console.error('Could not record login event', err);
-  }
-}
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// Only ever accept a same-site path for the post-login redirect — never let
-// this become an open redirect to an attacker-controlled URL.
-function safeNext(raw) {
-  const next = typeof raw === 'string' ? raw : '/';
-  return next.startsWith('/') && !next.startsWith('//') ? next : '/';
-}
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Branded, self-contained sign-in page — reuses the app's own stylesheet,
-// fonts and logo (all served as static files, reachable from this API
-// route the same as from index.html) rather than duplicating the design
-// system inline, so this page automatically stays in sync with the rest
-// of the app's look. Only the page-specific layout (the centered card;
-// there's no #app shell here to hang off of) lives in the local <style>
-// block below.
-function formPage({ next, error }) {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sign in — Dynamic Spatial Model Builder</title>
-<meta name="theme-color" content="#ffffff" />
-<link rel="icon" href="/icons/icon-192.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/style.css" />
-<style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--sp-6); box-sizing: border-box; }
-  .auth-card {
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border-soft);
-    border-radius: var(--radius-lg);
-    padding: var(--sp-8) var(--sp-6);
-    box-shadow: var(--glass-inset-highlight), var(--glass-shadow-lifted);
-    box-sizing: border-box;
-  }
-  .auth-logo { width: 200px; max-width: 70%; height: auto; margin: 0 auto var(--sp-6); display: block; }
-  .auth-card h1 {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 700;
-    font-size: 26px;
-    margin: 0 0 4px;
-    color: var(--ink);
-  }
-  .auth-tagline { margin: 0 0 var(--sp-6); font-size: 14px; color: var(--ink-secondary); }
-  .auth-card input[type=email] {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--glass-bg-strong);
-    border: 1px solid var(--glass-border-soft);
-    border-radius: var(--radius-sm);
-    padding: 11px 14px;
-    font-family: 'Barlow', sans-serif;
-    font-size: 15px;
-    color: var(--ink);
-    margin: 0 0 var(--sp-3);
-  }
-  .auth-card input[type=email]:focus {
-    outline: none;
-    border-color: var(--primary-2);
-    box-shadow: 0 0 0 3px rgba(201, 126, 13, 0.18);
-  }
-  .auth-card button[type=submit] { width: 100%; }
-  .auth-error {
-    background: var(--status-danger-bg);
-    color: var(--status-danger-text);
-    border-radius: var(--radius-sm);
-    padding: var(--sp-2) var(--sp-3);
-    margin: 0 0 var(--sp-3);
-    font-size: 13px;
-    text-align: left;
-  }
-  .auth-footnote { margin: var(--sp-6) 0 0; font-size: 12px; color: var(--ink-secondary); }
-</style>
-</head><body>
-  <div class="auth-card">
-    <img class="auth-logo" src="/assets/logo/spatialis-horizontal-colour.png" alt="Spatialis OS" />
-    <h1>Dynamic Spatial Model Builder</h1>
-    <p class="auth-tagline">Spatialis OS · Explore a live digital twin of your warehouse</p>
-    ${error ? `<div class="auth-error">${escapeHtml(error)}</div>` : ''}
-    <form method="POST" action="/api/auth/login">
-      <input type="email" name="email" placeholder="you@example.com" required autofocus />
-      <input type="hidden" name="next" value="${escapeHtml(next)}" />
-      <button type="submit" class="btn btn-primary">Continue</button>
-    </form>
-    <p class="auth-footnote">Enter any email to get started — you'll get your own guest access, no approval needed.</p>
-  </div>
-</body></html>`;
-}
-
-// Shown for ~1.5s right after a successful sign-in, before continuing on to
-// the app. Signing in redirected straight to `next` before this existed,
-// which gave a first-time visitor zero feedback that anything had
-// happened — the app can take a moment to load (3D scene, etc.), so a
-// silent redirect reads as "nothing happened," and the reported result was
-// people re-submitting the same email a second time to see if it "worked."
-// This page's whole job is to be an unmissable "yes, you're in" moment
-// before handing off to the app. Auto-continues via <meta refresh> (no JS
-// dependency) with a manual link as a fallback for anyone who doesn't want
-// to wait.
-function successPage({ next, email, isNewGuest }) {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta http-equiv="refresh" content="1.5;url=${escapeHtml(next)}" />
-<title>Signed in — Dynamic Spatial Model Builder</title>
-<meta name="theme-color" content="#ffffff" />
-<link rel="icon" href="/icons/icon-192.png" />
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Barlow+Semi+Condensed:wght@500&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/style.css" />
-<style>
-  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--sp-6); box-sizing: border-box; }
-  .auth-card { width: 100%; max-width: 400px; text-align: center; background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border-soft); border-radius: var(--radius-lg); padding: var(--sp-8) var(--sp-6); box-shadow: var(--glass-inset-highlight), var(--glass-shadow-lifted); box-sizing: border-box; }
-  .auth-check { width: 56px; height: 56px; border-radius: 50%; background: var(--status-success-bg); color: var(--status-success-text); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--sp-4); font-size: 28px; line-height: 1; }
-  .auth-card h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 24px; margin: 0 0 4px; color: var(--ink); }
-  .auth-card p.auth-tagline { margin: 0 0 var(--sp-6); font-size: 14px; color: var(--ink-secondary); }
-  .auth-footnote { margin: var(--sp-6) 0 0; font-size: 12px; color: var(--ink-secondary); }
-  a.btn { text-decoration: none; display: inline-block; }
-</style>
-</head><body>
-  <div class="auth-card">
-    <div class="auth-check">&#10003;</div>
-    <h1>You're in</h1>
-    <p class="auth-tagline">${isNewGuest ? `Guest access created for ${escapeHtml(email)}.` : `Signed in as ${escapeHtml(email)}.`}</p>
-    <a class="btn btn-primary" href="${escapeHtml(next)}">Continue to app &rarr;</a>
-    <p class="auth-footnote">Redirecting automatically&hellip;</p>
-  </div>
-</body></html>`;
-}
+import { formPage, codeFormPage, safeNext, EMAIL_RE } from '../../lib/authPages.js';
+import { generateCode, hashCode, CODE_TTL_MS, RESEND_COOLDOWN_MS } from '../../lib/loginCodes.js';
+import { sendVerificationCode } from '../../lib/mailer.js';
 
 export default async function handler(req, res) {
   const secret = process.env.SESSION_SECRET;
@@ -210,51 +53,55 @@ export default async function handler(req, res) {
     }
     const lowerEmail = email.toLowerCase();
 
-    let allowlist;
+    // Cooldown check: if this address was already sent a code very
+    // recently, don't send another one. This isn't just about not being
+    // annoying — without it, this form is an open "email anyone,
+    // repeatedly, on demand" tool (type a stranger's real address, hit
+    // submit in a loop), and it also protects the sending mailbox from
+    // tripping Google's rate limits.
+    let existing;
     try {
-      // A fresh sign-in should see the just-edited list, not a stale cache.
-      allowlist = await getAllowlist({ fresh: true });
+      const { rows } = await sql`SELECT created_at FROM login_codes WHERE email = ${lowerEmail}`;
+      existing = rows[0] || null;
     } catch (err) {
       res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(formPage({ next, error: 'Could not check the access list right now (database unreachable). Try again in a moment.' }));
+      res.send(formPage({ next, error: 'Could not start sign-in right now (database unreachable). Try again in a moment.' }));
       return;
     }
 
-    const isNewGuest = !allowlist.has(lowerEmail);
-    if (isNewGuest) {
-      // Self-serve guest access: anyone with a plausible email gets in as a
-      // non-admin guest, automatically — see the file-level comment above.
-      // `ON CONFLICT ... DO NOTHING` matters here: a race with another
-      // request for the same brand-new address (or with an admin adding
-      // this exact address at the same moment) must never downgrade an
-      // existing admin row to a guest one.
+    const onCooldown = !!existing && (Date.now() - new Date(existing.created_at).getTime()) < RESEND_COOLDOWN_MS;
+
+    if (!onCooldown) {
+      const code = generateCode();
       try {
+        const codeHash = await hashCode(secret, lowerEmail, code);
         await sql`
-          INSERT INTO allowed_emails (email, is_admin, added_by)
-          VALUES (${lowerEmail}, false, 'self-serve')
-          ON CONFLICT (email) DO NOTHING
+          INSERT INTO login_codes (email, code_hash, expires_at, attempts, created_at)
+          VALUES (${lowerEmail}, ${codeHash}, ${new Date(Date.now() + CODE_TTL_MS).toISOString()}, 0, now())
+          ON CONFLICT (email) DO UPDATE SET
+            code_hash = EXCLUDED.code_hash,
+            expires_at = EXCLUDED.expires_at,
+            attempts = 0,
+            created_at = now()
         `;
-        invalidateAllowlistCache();
       } catch (err) {
         res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(formPage({ next, error: 'Could not set up guest access right now (database unreachable). Try again in a moment.' }));
+        res.send(formPage({ next, error: 'Could not start sign-in right now (database unreachable). Try again in a moment.' }));
+        return;
+      }
+
+      try {
+        await sendVerificationCode(lowerEmail, code);
+      } catch (err) {
+        console.error('Could not send verification email', err);
+        res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(formPage({ next, error: "Couldn't send the verification email right now. Try again in a moment." }));
         return;
       }
     }
 
-    await recordLoginEvent(req, lowerEmail);
-
-    const sessionToken = await signToken({ email: lowerEmail }, secret, SESSION_MAX_AGE);
-    res.setHeader(
-      'Set-Cookie',
-      `${SESSION_COOKIE}=${sessionToken}; Path=/; Max-Age=${SESSION_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`
-    );
-    // Render an explicit "you're in" confirmation instead of a silent 302 —
-    // see the comment on successPage() above for why. The cookie is already
-    // set on this response, so the auto-redirect (or the manual link) lands
-    // signed in either way.
     res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(successPage({ next, email: lowerEmail, isNewGuest }));
+    res.send(codeFormPage({ email: lowerEmail, next, error: null, justSent: !onCooldown }));
     return;
   }
 
