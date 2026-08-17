@@ -70,15 +70,25 @@ export default async function handler(req, res) {
       // event for an address later removed from the allowlist still shows
       // (is_admin comes back false in that case), since the visit itself
       // still happened.
+      //
+      // demo_bookings is pre-aggregated into its own subquery (per email)
+      // before joining — joining the raw table directly here would fan out
+      // each login_events row once per matching demo_bookings row.
       const { rows } = await sql`
         SELECT
           le.email,
           COALESCE(ae.is_admin, false) AS is_admin,
           le.logged_in_at,
           le.user_agent,
-          le.ip
+          le.ip,
+          COALESCE(db.demo_count, 0)::int AS demo_count
         FROM login_events le
         LEFT JOIN allowed_emails ae ON ae.email = le.email
+        LEFT JOIN (
+          SELECT email, COUNT(*)::int AS demo_count
+          FROM demo_bookings
+          GROUP BY email
+        ) db ON db.email = le.email
         ORDER BY le.logged_in_at DESC
       `;
       res.status(200).json(rows.map((r) => ({
@@ -86,7 +96,8 @@ export default async function handler(req, res) {
         isAdmin: r.is_admin === true,
         loggedInAt: r.logged_in_at,
         userAgent: r.user_agent,
-        ip: r.ip
+        ip: r.ip,
+        demoCount: r.demo_count
       })));
       return;
     }
@@ -94,18 +105,34 @@ export default async function handler(req, res) {
     // LEFT JOIN so someone who was invited but has never signed in still
     // shows up, with visitCount 0 and null first/last visit — that's the
     // whole point of this panel (who from the invite list hasn't visited).
+    //
+    // login_events and demo_bookings are each pre-aggregated into their own
+    // subquery (per email) before joining into allowed_emails — joining
+    // both "many" tables directly in one GROUP BY would fan out into a
+    // cartesian product and inflate visit_count/demo_count.
     const { rows } = await sql`
       SELECT
         ae.email,
         ae.is_admin,
         ae.created_at AS invited_at,
-        COUNT(le.id)::int AS visit_count,
-        MIN(le.logged_in_at) AS first_visit,
-        MAX(le.logged_in_at) AS last_visit
+        COALESCE(le.visit_count, 0)::int AS visit_count,
+        le.first_visit,
+        le.last_visit,
+        COALESCE(db.demo_count, 0)::int AS demo_count,
+        db.last_demo
       FROM allowed_emails ae
-      LEFT JOIN login_events le ON le.email = ae.email
-      GROUP BY ae.email, ae.is_admin, ae.created_at
-      ORDER BY last_visit DESC NULLS LAST, ae.created_at ASC
+      LEFT JOIN (
+        SELECT email, COUNT(*)::int AS visit_count,
+          MIN(logged_in_at) AS first_visit, MAX(logged_in_at) AS last_visit
+        FROM login_events
+        GROUP BY email
+      ) le ON le.email = ae.email
+      LEFT JOIN (
+        SELECT email, COUNT(*)::int AS demo_count, MAX(scheduled_at) AS last_demo
+        FROM demo_bookings
+        GROUP BY email
+      ) db ON db.email = ae.email
+      ORDER BY le.last_visit DESC NULLS LAST, ae.created_at ASC
     `;
     res.status(200).json(rows.map((r) => ({
       email: r.email,
@@ -113,15 +140,18 @@ export default async function handler(req, res) {
       invitedAt: r.invited_at,
       visitCount: r.visit_count,
       firstVisit: r.first_visit,
-      lastVisit: r.last_visit
+      lastVisit: r.last_visit,
+      demoCount: r.demo_count,
+      lastDemo: r.last_demo
     })));
   } catch (err) {
     console.error(err);
-    // Most likely cause: sql/login_events.sql hasn't been run against this
-    // database yet. Say so plainly instead of a bare 500.
+    // Most likely cause: sql/login_events.sql or sql/demo_bookings.sql
+    // hasn't been run against this database yet. Say so plainly instead of
+    // a bare 500.
     res.status(500).json({
       error: 'Could not load visitor log. If this is the first time you\'re seeing this, ' +
-        'make sure sql/login_events.sql has been run against the database.',
+        'make sure sql/login_events.sql and sql/demo_bookings.sql have both been run against the database.',
       detail: String(err?.message || err)
     });
   }

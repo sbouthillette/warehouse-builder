@@ -733,11 +733,11 @@
       <h2>Visitor Log</h2>
       <button type="button" id="btnCloseVisitorLogModal" class="icon-btn" title="Close">✕</button>
     </div>
-    <p class="hint">Everyone on the access list, and whether they've actually signed in yet. "Last visit" updates each time someone signs in with the email form — it doesn't track every page view within a session.</p>
+    <p class="hint">Everyone on the access list, and whether they've actually signed in yet. "Last visit" updates each time someone signs in with the email form — it doesn't track every page view within a session. "Demos" counts completed Calendly bookings made through the "Schedule a Full Demo" button — it won't catch a booking made through the fallback tab if the Calendly widget failed to load.</p>
     <div class="table-wrap">
       <table id="visitorLogTable" class="data-table">
-        <thead><tr><th>Email</th><th>Invited</th><th>Visits</th><th>First visit</th><th>Last visit</th></tr></thead>
-        <tbody id="visitorLogTableBody"><tr><td colspan="5">Loading…</td></tr></tbody>
+        <thead><tr><th>Email</th><th>Invited</th><th>Visits</th><th>First visit</th><th>Last visit</th><th>Demos</th><th>Last demo</th></tr></thead>
+        <tbody id="visitorLogTableBody"><tr><td colspan="7">Loading…</td></tr></tbody>
       </table>
     </div>
     <div class="visitor-log-actions">

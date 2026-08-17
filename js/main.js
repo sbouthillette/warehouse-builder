@@ -134,6 +134,23 @@
         window.open(trigger.href, '_blank', 'noopener');
       }
     });
+
+    // Calendly's embedded popup posts this message to the page the moment
+    // a booking actually completes — before the visitor even closes the
+    // popup (see developer.calendly.com/embed-api). That's how the admin-
+    // only Visitor Log can show who's actually scheduled a demo, not just
+    // who clicked the button: this fires only on a real completed
+    // booking, not on opening the scheduler or picking a time. Bound once
+    // here (not inside the click handler) so it isn't re-registered on
+    // every click. Can't see bookings made through the plain-navigation
+    // fallback above (a real new tab, no message-passing back here).
+    window.addEventListener('message', (e) => {
+      if (!e.data || typeof e.data.event !== 'string' || e.data.event.indexOf('calendly.') !== 0) return;
+      if (e.data.event !== 'calendly.event_scheduled') return;
+      fetch('/api/record-demo-scheduled', { method: 'POST' }).catch((err) => {
+        console.error('Could not record the demo booking', err);
+      });
+    });
   })();
 
   // ---------------- Manage Access modal (admin-only) ----------------
@@ -275,7 +292,7 @@
     }
 
     async function loadVisitorLog() {
-      tbody.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7">Loading…</td></tr>';
       clearError();
       try {
         const res = await fetch('/api/admin/login-history');
@@ -284,14 +301,14 @@
         lastList = list;
         renderVisitorLogTable(list);
       } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="5">Couldn’t load the visitor log.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7">Couldn’t load the visitor log.</td></tr>';
         showError(err.message);
       }
     }
 
     function renderVisitorLogTable(list) {
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">No one on the access list yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7">No one on the access list yet.</td></tr>';
         return;
       }
       tbody.innerHTML = list.map((row) => `
@@ -301,6 +318,8 @@
           <td>${row.visitCount > 0 ? row.visitCount : '<span class="visitor-log-never">Never</span>'}</td>
           <td>${formatDate(row.firstVisit)}</td>
           <td>${formatDate(row.lastVisit)}</td>
+          <td>${row.demoCount > 0 ? row.demoCount : '<span class="visitor-log-never">—</span>'}</td>
+          <td>${formatDate(row.lastDemo)}</td>
         </tr>
       `).join('');
     }
@@ -337,7 +356,8 @@
           'Admin': ev.isAdmin ? 'Yes' : 'No',
           'Signed In At': formatDate(ev.loggedInAt),
           'User Agent': ev.userAgent || '',
-          'IP': ev.ip || ''
+          'IP': ev.ip || '',
+          'Demos Scheduled': ev.demoCount || 0
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
