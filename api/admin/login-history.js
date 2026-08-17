@@ -4,6 +4,15 @@
 // when, from the login_events table (see sql/login_events.sql). Answers
 // "I emailed people the app URL — who actually showed up?"
 //
+// Two shapes, both admin-only:
+//   GET /api/admin/login-history               -> one row per address
+//       (aggregated: visit count, first/last visit) — what the on-screen
+//       table renders.
+//   GET /api/admin/login-history?format=events  -> one row per individual
+//       sign-in (email, timestamp, user agent, ip), most recent first —
+//       what the "Export Visit Log" button downloads, since "how many
+//       times" doesn't answer "show me every time they connected."
+//
 // Admin-only, same pattern as api/admin/allowed-emails.js: this route
 // re-checks admin status itself rather than trusting middleware.js, which
 // only checks that a visitor is *on* the list, not that they're an admin.
@@ -51,7 +60,37 @@ export default async function handler(req, res) {
   }
   if (!callerEmail) return; // requireAdmin already sent the response
 
+  const wantEvents = req.query.format === 'events';
+
   try {
+    if (wantEvents) {
+      // One row per sign-in, not per address — this is the "every time
+      // they connected" view, for the Export Visit Log button. Joined
+      // against allowed_emails only to tag admin rows in the export; an
+      // event for an address later removed from the allowlist still shows
+      // (is_admin comes back false in that case), since the visit itself
+      // still happened.
+      const { rows } = await sql`
+        SELECT
+          le.email,
+          COALESCE(ae.is_admin, false) AS is_admin,
+          le.logged_in_at,
+          le.user_agent,
+          le.ip
+        FROM login_events le
+        LEFT JOIN allowed_emails ae ON ae.email = le.email
+        ORDER BY le.logged_in_at DESC
+      `;
+      res.status(200).json(rows.map((r) => ({
+        email: r.email,
+        isAdmin: r.is_admin === true,
+        loggedInAt: r.logged_in_at,
+        userAgent: r.user_agent,
+        ip: r.ip
+      })));
+      return;
+    }
+
     // LEFT JOIN so someone who was invited but has never signed in still
     // shows up, with visitCount 0 and null first/last visit — that's the
     // whole point of this panel (who from the invite list hasn't visited).

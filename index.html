@@ -32,10 +32,15 @@
       <div>
         <h1>Dynamic Spatial Model Builder</h1>
         <p class="subtitle">Spatialis OS · Dynamic Spatial Model Editor</p>
+        <!-- Persistent, non-dismissible — every visitor should see this
+             every time, not just on a first visit (see the button next to
+             it, wired up in js/main.js, which lets someone act on it). -->
+        <p class="demo-disclaimer">You're viewing a live demo of the Dynamic Spatial Model — not the full Spatialis OS platform.</p>
       </div>
     </div>
     <div class="topbar-actions">
       <span id="saveStatus" class="save-status">—</span>
+      <a id="btnRequestDemo" class="btn btn-primary" href="mailto:hello@spatialisos.com?subject=Request%20a%20Full%20Demo%20%E2%80%94%20Spatialis%20OS&amp;body=Hi%20Spatialis%20OS%20team%2C%0D%0A%0D%0AI've%20been%20exploring%20the%20Dynamic%20Spatial%20Model%20demo%20and%20would%20like%20to%20see%20a%20full%20demo%20of%20the%20platform.%0D%0A%0D%0A">Request a Full Demo</a>
       <button id="btnManageAccess" class="btn btn-ghost" hidden>Manage Access</button>
       <button id="btnVisitorLog" class="btn btn-ghost" hidden>Visitor Log</button>
       <button id="btnExport" class="btn btn-ghost" hidden>Export JSON</button>
@@ -715,6 +720,7 @@
     </div>
     <div class="visitor-log-actions">
       <button type="button" id="btnCopyNeverVisited" class="btn btn-ghost">Copy emails that haven't visited</button>
+      <button type="button" id="btnExportVisitorLog" class="btn btn-ghost">Export Visit Log (.xlsx)</button>
       <button type="button" id="btnRefreshVisitorLog" class="btn btn-ghost">Refresh</button>
     </div>
     <p id="visitorLogError" class="access-error" hidden></p>

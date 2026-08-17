@@ -81,9 +81,14 @@
   // through the app itself.
   (async function applyAdminOnlyUI() {
     let isAdmin = false;
+    let email = null;
     try {
       const res = await fetch('/api/auth/me');
-      if (res.ok) isAdmin = !!(await res.json()).isAdmin;
+      if (res.ok) {
+        const me = await res.json();
+        isAdmin = !!me.isAdmin;
+        email = me.email || null;
+      }
     } catch (err) {
       console.error('Could not determine admin status', err);
     }
@@ -92,6 +97,15 @@
       document.getElementById('importJsonLabel').hidden = false;
       document.getElementById('btnManageAccess').hidden = false;
       document.getElementById('btnVisitorLog').hidden = false;
+    }
+    // Personalize the "Request a Full Demo" mailto with who's asking, once
+    // we know it — the static href in index.html is a fine fallback for
+    // the brief moment before this resolves (or if it fails).
+    const demoBtn = document.getElementById('btnRequestDemo');
+    if (demoBtn && email) {
+      const subject = 'Request a Full Demo — Spatialis OS';
+      const body = `Hi Spatialis OS team,\n\nI've been exploring the Dynamic Spatial Model demo (signed in as ${email}) and would like to see a full demo of the platform.\n\n`;
+      demoBtn.href = `mailto:hello@spatialisos.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     }
   })();
 
@@ -271,6 +285,45 @@
     document.getElementById('btnCloseVisitorLogModal').addEventListener('click', () => { modal.hidden = true; });
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
     document.getElementById('btnRefreshVisitorLog').addEventListener('click', () => loadVisitorLog());
+
+    // Every individual sign-in (not the on-screen table's per-address
+    // summary) as a downloadable .xlsx — mirrors the "Export Location List
+    // (.xlsx)" pattern elsewhere in the app (same SheetJS library, already
+    // loaded via the <script> tag in index.html).
+    document.getElementById('btnExportVisitorLog').addEventListener('click', async (e) => {
+      if (typeof XLSX === 'undefined') { alert('The Excel library did not load — check your connection and try again.'); return; }
+      const btn = e.currentTarget;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Exporting…';
+      clearError();
+      try {
+        const res = await fetch('/api/admin/login-history?format=events');
+        const events = await res.json();
+        if (!res.ok) throw new Error(events.error || 'Failed to load the visit log.');
+        if (events.length === 0) {
+          showError('No sign-ins recorded yet — nothing to export.');
+          return;
+        }
+        const rows = events.map((ev) => ({
+          'Email': ev.email,
+          'Admin': ev.isAdmin ? 'Yes' : 'No',
+          'Signed In At': formatDate(ev.loggedInAt),
+          'User Agent': ev.userAgent || '',
+          'IP': ev.ip || ''
+        }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Visits');
+        const stamp = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `spatialis_visitor_log_${stamp}.xlsx`);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
 
     document.getElementById('btnCopyNeverVisited').addEventListener('click', async (e) => {
       const neverVisited = lastList.filter((row) => !row.visitCount).map((row) => row.email);

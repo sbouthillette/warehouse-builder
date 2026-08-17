@@ -126,6 +126,10 @@ body {
   color: var(--ink);
 }
 .brand .subtitle { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-secondary); }
+/* Persistent "this is a demo" note under the tagline — see index.html for
+   why it's never dismissed/hidden. Brand-colored text rather than a boxed
+   banner so it reads as part of the header, not as a warning/error state. */
+.brand .demo-disclaimer { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: var(--primary-2); font-weight: 500; }
 
 .topbar-actions { display: flex; align-items: center; gap: var(--sp-2); }
 .save-status { font-size: 13px; color: var(--ink-secondary); margin-right: var(--sp-1); }
@@ -895,6 +899,7 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--sp-3);
   margin-top: var(--sp-4);
 }
