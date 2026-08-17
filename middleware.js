@@ -16,10 +16,18 @@ import { getAllowlist } from './lib/allowlist.js';
 
 export const config = {
   // Everything except /api/auth/* (the login/logout routes must stay
-  // reachable to unauthenticated visitors, or nobody could ever sign in).
-  // This covers the static app shell, every other /api route, and all
-  // pages.
-  matcher: ['/((?!api/auth/).*)']
+  // reachable to unauthenticated visitors, or nobody could ever sign in)
+  // AND the handful of static assets the sign-in page itself depends on:
+  // css/style.css, the logo under assets/, and the favicon under icons/.
+  // Those have to be public too, or an unauthenticated visitor's browser
+  // can't actually fetch them — each request gets redirected back to a
+  // fresh copy of the login page (wrong content-type for a stylesheet or
+  // image), which is why the sign-in screen would otherwise render
+  // completely unstyled with a broken logo. None of these leak app data —
+  // just design tokens and branding images — so it's safe to leave public.
+  // This still covers the static app shell (index.html, js/*), every other
+  // /api route, and all other pages.
+  matcher: ['/((?!api/auth/|css/|assets/|icons/).*)']
 };
 
 function getCookie(request, name) {
