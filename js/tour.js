@@ -34,7 +34,7 @@
       tab: 'warehouse',
       target: '#shapePreview',
       title: '1. Warehouse Shell',
-      body: "Start by drawing the building's outer footprint — a rectangle, an L-shape, any polygon. Everything else gets built inside this outline."
+      body: "Start by drawing the building's outer footprint. Use a quick-start shape like a rectangle or an L-shape, or draw any custom polygon from scratch. Everything else gets built inside this outline."
     },
     {
       tab: 'bays',
