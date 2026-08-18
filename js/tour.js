@@ -23,7 +23,7 @@
   const STEPS = [
     {
       title: 'Welcome to the Dynamic Spatial Model',
-      body: "This is a live, interactive digital twin builder — everything on screen is a working demo, not a mockup. Here's how a warehouse gets built, in about a minute."
+      body: "This is a live, interactive demo — not a mockup. In just a few minutes, you can recreate your own warehouse here, and on the full platform, connect it to your live inventory. It's more than a visual: the Dynamic Spatial Model builds a mathematical model of your warehouse that AI can read and reuse to power advanced analysis and automation."
     },
     {
       target: '.tabs',
