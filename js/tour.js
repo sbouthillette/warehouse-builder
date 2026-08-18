@@ -46,7 +46,7 @@
       tab: 'racks',
       target: '#racksPlanCanvas',
       title: '3. Racks & Aisles',
-      body: 'Duplicate a bay template to form a rack, then place racks and aisles throughout the footprint you drew in step 1.'
+      body: "For each rack, set its origin coordinates (X, Y), pick a Bay Template, and choose how many bays to place — then repeat to add rack after rack until the whole warehouse is racked out. Each bay gets its own label in the order it's placed; reverse that order anytime if you'd rather number from the other end."
     },
     {
       tab: 'inventory',
