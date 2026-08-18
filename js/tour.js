@@ -61,6 +61,11 @@
       body: 'This is the Dynamic Spatial Model — a live 3D twin of everything you just built. Click any pallet to see what it is storing.'
     },
     {
+      target: '#btnNewWarehouse',
+      title: 'Try it yourself',
+      body: 'Click "+ New Warehouse" anytime to start your own from scratch — your own footprint, bays, racks, and inventory, saved to your account as you go. Everything you just saw was built exactly this way.'
+    },
+    {
       target: '#btnScheduleDemo',
       title: "That's the core workflow",
       body: "There's more — doors, zones, mezzanines, location barcodes — but that's the shape of it. When you're ready for the full platform, schedule a full demo."
