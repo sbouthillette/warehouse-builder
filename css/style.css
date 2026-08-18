@@ -1132,7 +1132,20 @@ h2 {
   border-radius: var(--radius-md);
   padding: 10px 12px;
 }
-.picker-task-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--tertiary); }
+/* Product thumbnails — a real uploaded photo (item.imageDataUrl) when
+   available, otherwise a colored placeholder tile (see picker-thumb-placeholder
+   below) so items still read as visually distinct rather than one generic icon. */
+.picker-thumb {
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.picker-thumb-sm { width: 40px; height: 40px; font-size: 18px; }
+.picker-thumb-md { width: 48px; height: 48px; font-size: 20px; }
+.picker-thumb-placeholder { border: 1px solid; }
 .picker-task-info { flex: 1; min-width: 0; }
 .picker-task-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker-task-meta { font-size: 12px; color: var(--ink-secondary); }
@@ -1161,6 +1174,15 @@ h2 {
   box-shadow: none;
   margin-top: var(--sp-2);
 }
+/* "Picked" confirmation state — the CTA itself morphs into this (bottom of
+   the screen) briefly before advancing to the next task, rather than a
+   full-screen overlay. */
+.picker-cta.picker-cta-picked {
+  background: linear-gradient(135deg, #2c6b39, #3f8f4e);
+  cursor: default;
+  transform: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+}
 
 /* ---- "Generating route" screen ---- */
 .picker-generating {
@@ -1185,6 +1207,7 @@ h2 {
 
 /* ---- Active pick / navigation screen ---- */
 .picker-task-progress { font-size: 12px; color: rgba(255,255,255,0.6); text-align: center; padding-top: var(--sp-3); }
+.picker-leg-label { font-size: 12px; color: rgba(255,255,255,0.45); text-align: center; margin-top: 2px; }
 .picker-location-big {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 34px;
@@ -1194,29 +1217,6 @@ h2 {
   letter-spacing: 0.02em;
 }
 .picker-location-sub { text-align: center; font-size: 13px; color: rgba(255,255,255,0.65); margin-bottom: var(--sp-3); }
-
-.picker-route-map {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: var(--radius-md);
-  padding: var(--sp-4);
-  margin: 0 var(--sp-4);
-}
-.picker-route-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.18); margin: 0 auto; }
-.picker-route-dot-path { background: rgba(242,169,60,0.55); }
-.picker-route-dot-current {
-  width: 14px; height: 14px;
-  background: var(--tertiary);
-  box-shadow: 0 0 0 5px rgba(188,92,146,0.28);
-  animation: pickerPulse 1.4s ease-in-out infinite;
-}
-@keyframes pickerPulse {
-  0%, 100% { box-shadow: 0 0 0 5px rgba(188,92,146,0.28); }
-  50% { box-shadow: 0 0 0 9px rgba(188,92,146,0.12); }
-}
 
 .picker-item-card {
   margin: var(--sp-4);
@@ -1228,43 +1228,10 @@ h2 {
   align-items: center;
   gap: var(--sp-3);
 }
-.picker-item-icon {
-  width: 40px; height: 40px; border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--primary), var(--primary-2));
-  flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
-}
 .picker-item-info { flex: 1; min-width: 0; }
 .picker-item-name { font-weight: 700; font-size: 14px; }
 .picker-item-sku { font-size: 12px; color: rgba(255,255,255,0.55); }
 .picker-item-qty { font-size: 20px; font-weight: 700; color: var(--primary); flex-shrink: 0; }
-
-/* Full-screen confirmation flash — briefly shown over the active pick
-   screen when "Confirm Pick" is clicked, before advancing to the next task. */
-.picker-checkmark-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(18, 13, 8, 0.92);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 150ms ease;
-}
-.picker-checkmark-overlay.show { opacity: 1; }
-.picker-checkmark-circle {
-  width: 84px; height: 84px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3f8f4e, #2c6b39);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 40px;
-  color: #fff;
-  transform: scale(0.6);
-  transition: transform 220ms cubic-bezier(.2,.8,.2,1.4);
-}
-.picker-checkmark-overlay.show .picker-checkmark-circle { transform: scale(1); }
 
 /* ---- Done screen ---- */
 .picker-done { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: var(--sp-4); gap: var(--sp-2); }

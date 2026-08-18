@@ -25,8 +25,14 @@
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  function createPlanView(canvas) {
+  function createPlanView(canvas, opts) {
     const ctx = canvas.getContext('2d');
+    // `minimal` strips labels, vertex/origin dots, and other editing-context
+    // chrome that only matters on the authoring tabs (rack names, bay
+    // labels, door/wall names, the (0,0) origin marker, picking-side
+    // arrows). Used by the Guided Picking demo's own plan instance, which
+    // needs to read as a clean, legible route map rather than a CAD view.
+    const minimal = !!(opts && opts.minimal);
 
     // fittedForId tracks which warehouse's shape the current scale/pan was
     // fitted to — not just a one-time boolean — so that switching to a
@@ -61,6 +67,39 @@
       // fully inside the padded viewport rather than assuming an origin-anchored rect.
       view.panX = 40 - bounds.minX * view.scale;
       view.panY = 40 - bounds.minY * view.scale;
+    }
+
+    // Fits the view to an arbitrary world-space bounding box (padded), then
+    // pins it via fittedForId so the normal auto-fit-to-warehouse branch in
+    // render() leaves it alone on subsequent re-renders — same mechanism
+    // fitToWarehouse uses, just targeting a caller-supplied box instead of
+    // the full warehouse shape. Used by the Guided Picking demo to zoom to
+    // the planned route rather than showing the whole building.
+    function fitToBoundsWorld(minX, minY, maxX, maxY) {
+      const wrap = canvas.parentElement;
+      const w = wrap.clientWidth - 80;
+      const h = wrap.clientHeight - 80;
+      const width = Math.max(0.5, maxX - minX);
+      const length = Math.max(0.5, maxY - minY);
+      const scaleX = w / width;
+      const scaleY = h / length;
+      view.scale = Math.max(0.5, Math.min(200, Math.min(scaleX, scaleY)));
+      view.panX = 40 - minX * view.scale;
+      view.panY = 40 - minY * view.scale;
+    }
+
+    function fitToPoints(points, paddingM) {
+      if (!points || !points.length) return;
+      const pad = paddingM != null ? paddingM : 2;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      points.forEach((p) => {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      });
+      fitToBoundsWorld(minX - pad, minY - pad, maxX + pad, maxY + pad);
+      const store = window.WarehouseStore;
+      const wh = store && store.data.warehouse;
+      view.fittedForId = wh ? wh.id : null; // stop the next render()'s auto-fit-to-warehouse from overriding this
     }
 
     function worldToScreen(x, y) {
@@ -108,6 +147,8 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
+      if (minimal) return; // skip the label + vertex/origin dots — legibility over CAD-style annotation
+
       const bounds = window.WarehouseModel.polygonBounds(wh.shape);
       const topLeft = worldToScreen(bounds.minX, bounds.maxY);
       ctx.fillStyle = '#5f5e5a'; // ink-secondary
@@ -143,9 +184,11 @@
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(Math.min(a.sx, b.sx), Math.min(a.sy, b.sy), Math.abs(b.sx - a.sx), Math.abs(b.sy - a.sy));
       ctx.setLineDash([]);
-      ctx.fillStyle = '#7A4FBF';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(`Mezzanine (${mz.heightMm}mm)`, Math.min(a.sx, b.sx), Math.min(a.sy, b.sy) - 6);
+      if (!minimal) {
+        ctx.fillStyle = '#7A4FBF';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(`Mezzanine (${mz.heightMm}mm)`, Math.min(a.sx, b.sx), Math.min(a.sy, b.sy) - 6);
+      }
       ctx.restore();
     }
 
@@ -167,7 +210,7 @@
         ctx.lineCap = 'butt';
 
         const len = Math.hypot(b.sx - a.sx, b.sy - a.sy);
-        if (len >= 40) {
+        if (!minimal && len >= 40) {
           ctx.fillStyle = '#fff';
           ctx.font = '10px sans-serif';
           ctx.textAlign = 'center';
@@ -246,11 +289,13 @@
       ctx.strokeStyle = hexToRgba(z.color, 0.95);
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(c.sx, c.sy, sr, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#1a1a18'; // ink
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${z.name} (${z.height}m tall)`, c.sx, c.sy - sr - 6);
-      ctx.textAlign = 'left';
+      if (!minimal) {
+        ctx.fillStyle = '#1a1a18'; // ink
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${z.name} (${z.height}m tall)`, c.sx, c.sy - sr - 6);
+        ctx.textAlign = 'left';
+      }
     }
 
     function drawZones(zones) {
@@ -279,9 +324,11 @@
           ctx.strokeStyle = hexToRgba(z.color, 0.95);
           ctx.lineWidth = 2;
           ctx.strokeRect(x, y, w, h);
-          ctx.fillStyle = '#1a1a18'; // ink
-          ctx.font = 'bold 11px sans-serif';
-          ctx.fillText(`${z.name} (${z.height}m tall)`, x + 4, y + 14);
+          if (!minimal) {
+            ctx.fillStyle = '#1a1a18'; // ink
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText(`${z.name} (${z.height}m tall)`, x + 4, y + 14);
+          }
         } else {
           ctx.fillStyle = hexToRgba(z.color, 0.18);
           ctx.fillRect(x, y, w, h);
@@ -290,9 +337,11 @@
           ctx.setLineDash([5, 3]);
           ctx.strokeRect(x, y, w, h);
           ctx.setLineDash([]);
-          ctx.fillStyle = '#1a1a18'; // ink
-          ctx.font = '11px sans-serif';
-          ctx.fillText(`${z.name} (${z.type})`, x + 4, y + 14);
+          if (!minimal) {
+            ctx.fillStyle = '#1a1a18'; // ink
+            ctx.font = '11px sans-serif';
+            ctx.fillText(`${z.name} (${z.type})`, x + 4, y + 14);
+          }
         }
       });
     }
@@ -483,23 +532,25 @@
           }
         }
 
-        ctx.fillStyle = '#1a1a18'; // ink — dark text reads well on the amber rack fill
-        ctx.font = 'bold 11px sans-serif';
-        ctx.save();
-        if (rot) {
-          ctx.translate(x + pw / 2, y + ph / 2);
-          ctx.rotate(-Math.PI / 2);
-          ctx.textAlign = 'center';
-          ctx.fillText(`${r.name} (${r.bayCount} bays)`, 0, 0);
-        } else {
-          ctx.textAlign = 'center';
-          ctx.fillText(`${r.name} (${r.bayCount} bays)`, x + pw / 2, y + ph / 2 + 4);
+        if (!minimal) {
+          ctx.fillStyle = '#1a1a18'; // ink — dark text reads well on the amber rack fill
+          ctx.font = 'bold 11px sans-serif';
+          ctx.save();
+          if (rot) {
+            ctx.translate(x + pw / 2, y + ph / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillText(`${r.name} (${r.bayCount} bays)`, 0, 0);
+          } else {
+            ctx.textAlign = 'center';
+            ctx.fillText(`${r.name} (${r.bayCount} bays)`, x + pw / 2, y + ph / 2 + 4);
+          }
+          ctx.restore();
         }
-        ctx.restore();
 
         // Per-bay identifiers, only when zoomed in enough for the text to be legible.
         const cellSpan = (rot ? ph : pw) / r.bayCount;
-        if (Array.isArray(r.bays) && cellSpan >= 42) {
+        if (!minimal && Array.isArray(r.bays) && cellSpan >= 42) {
           ctx.font = '9px sans-serif';
           ctx.textAlign = 'center';
           ctx.fillStyle = '#1a1a18';
@@ -528,11 +579,13 @@
           }
         }
 
-        const edge = window.WarehouseModel.rackPickingEdge({
-          x: r.x, y: r.y, rotation: r.rotation, lengthM, depthM, pickingSide: r.pickingSide
-        });
-        drawPickingIndicator(edge);
-        drawOriginDot(r.x, r.y);
+        if (!minimal) {
+          const edge = window.WarehouseModel.rackPickingEdge({
+            x: r.x, y: r.y, rotation: r.rotation, lengthM, depthM, pickingSide: r.pickingSide
+          });
+          drawPickingIndicator(edge);
+          drawOriginDot(r.x, r.y);
+        }
       });
     }
 
@@ -567,7 +620,7 @@
           ctx.stroke();
         });
 
-        if (len >= 40) {
+        if (!minimal && len >= 40) {
           ctx.fillStyle = '#1a1a18'; // ink
           ctx.font = '10px sans-serif';
           ctx.textAlign = 'center';
@@ -657,13 +710,66 @@
       ctx.stroke();
     }
 
+    // Draws the Guided Picking demo's planned walking route — an ordered
+    // list of "legs" (one per pick task), each a short polyline in world
+    // space (straight when the next stop is in the same aisle, a 2-segment
+    // elbow when it isn't — see computeRoute in guidedPickingDemo.js).
+    // `r` = { legs: [{ taskIndex, points: [{x,y}, ...] }, ...],
+    //         activeLegIndex, phase }. Legs before activeLegIndex render
+    // muted/solid (already walked), the active leg renders bright with an
+    // animated dash (marching ants, driven by `phase`), and legs after
+    // render as a lighter dashed preview — so the whole planned path is
+    // visible at a glance, with a clear "you are here" read.
+    function drawPickRoute(r) {
+      if (!r || !r.legs || !r.legs.length) return;
+      const phase = r.phase || 0;
+      r.legs.forEach((leg) => {
+        const pts = (leg.points || []).map((p) => worldToScreen(p.x, p.y));
+        if (pts.length < 2) return;
+        ctx.save();
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        if (leg.taskIndex < r.activeLegIndex) {
+          ctx.strokeStyle = 'rgba(95,94,90,0.4)'; // ink-secondary — already walked
+          ctx.lineWidth = 3;
+        } else if (leg.taskIndex === r.activeLegIndex) {
+          ctx.strokeStyle = '#BC5C92'; // tertiary — current leg
+          ctx.lineWidth = 4;
+          ctx.setLineDash([10, 7]);
+          ctx.lineDashOffset = -phase * 14; // marching ants
+        } else {
+          ctx.strokeStyle = 'rgba(188,92,146,0.3)'; // tertiary, faint — upcoming
+          ctx.lineWidth = 3;
+          ctx.setLineDash([3, 6]);
+        }
+        ctx.beginPath();
+        pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy); });
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // "You are here" marker at the very start of the route.
+      const startPt = r.legs[0].points[0];
+      if (startPt) {
+        const p = worldToScreen(startPt.x, startPt.y);
+        ctx.save();
+        ctx.fillStyle = '#1a1a18'; // ink
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // `draft` (optional) is { door: {...} }, { zone: {...} }, { wall: {...} },
-    // { rack: {...} }, or { pickHighlight: {...} } (see drawPickHighlight
-    // above) — the current unsaved form state from the Doors / Zones &
-    // Obstacles / Interior Walls / Racks & Aisles tabs (or the Guided
-    // Picking demo's current target), highlighted on top of the normal
-    // plan. Passing nothing keeps whatever draft was last set (so
-    // pan/zoom/resize re-renders don't lose the highlight).
+    // { rack: {...} }, { pickHighlight: {...} } (see drawPickHighlight
+    // above), or { pickRoute: {...} } (see drawPickRoute above) — the
+    // current unsaved form state from the Doors / Zones & Obstacles /
+    // Interior Walls / Racks & Aisles tabs (or the Guided Picking demo's
+    // current target/route), highlighted on top of the normal plan.
+    // Passing nothing keeps whatever draft was last set (so pan/zoom/resize
+    // re-renders don't lose the highlight).
     function render(draft) {
       if (draft !== undefined) lastDraft = draft;
       resizeCanvas();
@@ -702,8 +808,10 @@
       if (lastDraft && lastDraft.rack) drawDraftRack(lastDraft.rack);
       drawDoors(store.data.doors, wh, store.data.walls);
       if (lastDraft && lastDraft.door) drawDraftDoor(wh, store.data.walls, lastDraft.door);
-      // Drawn last (on top of everything, including doors) so the pulsing
-      // pick-target highlight is never visually buried under other overlays.
+      // Drawn last (on top of everything, including doors) so the route and
+      // the pulsing pick-target highlight are never visually buried under
+      // other overlays. Route first, highlight on top of it.
+      if (lastDraft && lastDraft.pickRoute) drawPickRoute(lastDraft.pickRoute);
       if (lastDraft && lastDraft.pickHighlight) drawPickHighlight(lastDraft.pickHighlight);
       drawScaleBar();
     }
@@ -793,7 +901,10 @@
       zoomIn: () => applyZoom(1.2),
       zoomOut: () => applyZoom(1 / 1.2),
       setFloor,
-      getFloor: () => view.floor
+      getFloor: () => view.floor,
+      // Zooms/pans to fit a set of world-space points (e.g. a planned route)
+      // rather than the whole warehouse, then re-renders with that framing.
+      fitToPoints: (points, paddingM, draft) => { fitToPoints(points, paddingM); render(draft); }
     };
   }
 

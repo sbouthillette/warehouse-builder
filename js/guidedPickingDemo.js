@@ -5,13 +5,17 @@
 // changes data, or persists anything. "Confirm Pick" advances a scripted
 // walkthrough — it does not deduct inventory, scan a barcode, or touch the
 // database. The pick list IS built from the current warehouse's real
-// inventory (so it looks authentic rather than canned), but that's the only
-// thing "real" about it.
+// inventory (so it looks authentic rather than canned), and product photos
+// are the real ones uploaded on the Create Items tab when available — but
+// that's the only thing "real" about it. The walking route drawn on the 2D
+// plan is a lightweight demo-grade approximation (see buildRoute below),
+// not an actual path-planning algorithm.
 //
 // Shows a phone-frame mockup of what a picker's handheld screen could look
 // like, paired with the actual 2D plan (a second, independent PlanView
-// instance — see canvas2d.js) highlighting the current task's target
-// location via the pickHighlight draft key added there for this purpose.
+// instance in "minimal" mode — see canvas2d.js) highlighting the current
+// task's target location and the planned walking route via the
+// pickHighlight/pickRoute draft keys added there for this purpose.
 
 (function () {
   const store = window.WarehouseStore;
@@ -29,6 +33,7 @@
 
   let planView = null;
   let tasks = [];
+  let currentRoute = null; // { legs: [{ taskIndex, points, distanceM }, ...] } — see buildRoute
   let demoPhase = 'intro'; // 'intro' | 'generating' | 'task' | 'done'
   let taskIndex = 0;
   let demoStartedAt = null;
@@ -37,6 +42,25 @@
 
   function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------------- Product thumbnails ----------------
+  // Real photos when the item has one uploaded (Create Items tab —
+  // item.imageDataUrl); otherwise a colored placeholder tile (hashed from
+  // the part number, so the same SKU always gets the same color) rather
+  // than one generic box icon for everything.
+  const THUMB_COLORS = ['#F2A93C', '#E2572E', '#BC5C92', '#2F8F4E', '#3E7CB1', '#C97E0D'];
+  function hashStr(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function productThumbHtml(t, sizeClass) {
+    if (t.imageDataUrl) {
+      return `<img src="${t.imageDataUrl}" class="picker-thumb ${sizeClass}" alt="${escapeHtml(t.description)}" />`;
+    }
+    const color = THUMB_COLORS[hashStr(t.partNumber || t.description || '') % THUMB_COLORS.length];
+    return `<div class="picker-thumb picker-thumb-placeholder ${sizeClass}" style="background:${color}22;color:${color};border-color:${color}55;">📦</div>`;
   }
 
   // ---------------- Task list, built from real (but not mutated) inventory ----------------
@@ -62,7 +86,8 @@
           locationLabel: line.locationLabel,
           partNumber: c.partNumber,
           quantity: c.quantity,
-          description: (item && item.description) || c.partNumber
+          description: (item && item.description) || c.partNumber,
+          imageDataUrl: (item && item.imageDataUrl) || null
         });
       });
     });
@@ -75,27 +100,107 @@
     return candidates.slice(0, MAX_TASKS);
   }
 
-  // ---------------- Live 2D plan panel (separate PlanView instance) ----------------
+  // ---------------- Route calculation (2D plan path) ----------------
+  // A lightweight, demo-grade routing approximation — NOT a real path
+  // planner. Each task's "stand point" is a spot in the aisle directly in
+  // front of its target bay, derived from the rack's real picking-edge
+  // geometry (Model.rackPickingEdge), so the route line always terminates
+  // exactly where the pulsing pick highlight appears. Consecutive stops in
+  // the same aisle connect with a straight line; stops in different aisles
+  // connect with a simple 2-segment elbow (walk along the current aisle,
+  // then turn), so the path reads as something a person could actually
+  // walk instead of a diagonal cutting through rack rows.
+  function computeStartPoint() {
+    const wh = store.data.warehouse;
+    const bounds = Model.polygonBounds(wh.shape);
+    const doors = store.data.doors || [];
+    if (doors.length) {
+      const dp = Model.doorPoints(wh.shape, store.data.walls, doors[0]);
+      if (dp) return { x: (dp.start.x + dp.end.x) / 2, y: (dp.start.y + dp.end.y) / 2, axis: 'h' };
+    }
+    return { x: bounds.minX + 1.5, y: bounds.minY + 1.5, axis: 'h' };
+  }
+
+  function standPointForTask(t) {
+    const rack = store.data.racks.find((r) => r.id === t.rackId);
+    if (!rack) return null;
+    const fp = store.rackFootprint(rack);
+    const edge = Model.rackPickingEdge({
+      x: rack.x, y: rack.y, rotation: rack.rotation,
+      lengthM: fp.lengthM, depthM: fp.depthM, pickingSide: rack.pickingSide
+    });
+    const bayCount = Math.max(1, rack.bayCount);
+    const bayIdx = Math.max(0, Math.min(bayCount - 1, t.bayIndex || 0));
+    const frac = (bayIdx + 0.5) / bayCount;
+    const faceX = edge.p1.x + (edge.p2.x - edge.p1.x) * frac;
+    const faceY = edge.p1.y + (edge.p2.y - edge.p1.y) * frac;
+    const standOff = Math.max(0.8, Math.min((rack.aisleWidth || 3) / 2, 1.6));
+    return {
+      x: faceX + edge.nx * standOff,
+      y: faceY + edge.ny * standOff,
+      axis: edge.ny !== 0 ? 'h' : 'v' // 'h' = aisle runs along X at a fixed Y, 'v' = along Y at a fixed X
+    };
+  }
+
+  function legPoints(a, b) {
+    const sameAisle = a.axis === b.axis &&
+      Math.abs(a.axis === 'h' ? a.y - b.y : a.x - b.x) < 0.05;
+    if (sameAisle) return [a, b];
+    const elbow = a.axis === 'h' ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
+    return [a, elbow, b];
+  }
+
+  function pathLength(points) {
+    let d = 0;
+    for (let i = 1; i < points.length; i++) {
+      d += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    }
+    return d;
+  }
+
+  function buildRoute(taskList) {
+    let prev = computeStartPoint();
+    const legs = [];
+    taskList.forEach((t, i) => {
+      const stand = standPointForTask(t);
+      const dest = stand || prev;
+      const pts = legPoints(prev, dest);
+      legs.push({ taskIndex: i, points: pts, distanceM: pathLength(pts) });
+      prev = dest;
+    });
+    return { legs };
+  }
+
+  function allRoutePoints(route) {
+    const pts = [];
+    (route.legs || []).forEach((leg) => leg.points.forEach((p) => pts.push(p)));
+    return pts;
+  }
+
+  // ---------------- Live 2D plan panel (separate, minimal-mode PlanView instance) ----------------
   function ensurePlanView() {
     if (!planView && planCanvas && window.PlanView) {
-      planView = window.PlanView.create(planCanvas);
+      planView = window.PlanView.create(planCanvas, { minimal: true });
     }
   }
-  function updatePlanHighlight() {
+  function updatePlanOverlay() {
     if (!planView || demoPhase !== 'task') return;
     const t = tasks[taskIndex];
     if (!t) return;
-    planView.render({ pickHighlight: { rackId: t.rackId, bayIndex: t.bayIndex, phase: pulsePhase } });
+    planView.render({
+      pickHighlight: { rackId: t.rackId, bayIndex: t.bayIndex, phase: pulsePhase },
+      pickRoute: currentRoute ? { legs: currentRoute.legs, activeLegIndex: taskIndex, phase: pulsePhase } : null
+    });
   }
-  function clearPlanHighlight() {
+  function clearPlanOverlay() {
     if (!planView) return;
-    planView.render({ pickHighlight: null });
+    planView.render({ pickHighlight: null, pickRoute: null });
   }
   function startPulseLoop() {
     stopPulseLoop();
     const tick = () => {
       pulsePhase += 0.08;
-      updatePlanHighlight();
+      updatePlanOverlay();
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -113,7 +218,7 @@
 
   function taskCardHtml(t) {
     return `<div class="picker-task-card">
-      <span class="picker-task-dot"></span>
+      ${productThumbHtml(t, 'picker-thumb-sm')}
       <div class="picker-task-info">
         <div class="picker-task-name">${escapeHtml(t.description)}</div>
         <div class="picker-task-meta">${escapeHtml(t.code)}</div>
@@ -125,7 +230,7 @@
   function renderIntro() {
     demoPhase = 'intro';
     stopPulseLoop();
-    clearPlanHighlight();
+    clearPlanOverlay();
     setScreenMode('light');
     pickerScreenEl.innerHTML = `
       <div class="picker-header">
@@ -144,7 +249,6 @@
   function renderGenerating() {
     demoPhase = 'generating';
     stopPulseLoop();
-    clearPlanHighlight();
     setScreenMode('dark');
     pickerScreenEl.innerHTML = `
       <div class="picker-generating">
@@ -156,35 +260,20 @@
       </div>`;
   }
 
-  // Decorative route abstraction only — the REAL target location is shown
-  // precisely on the 2D plan alongside the phone. This is just flavor, the
-  // same way the reference design used a stylized dot-grid rather than a
-  // literal mini floor plan on a 3-inch screen.
-  function routeDotsHtml(index) {
-    const total = 15;
-    const current = (index * 7 + 4) % total;
-    const path = new Set([0, 1, 2].map((i) => (current - i - 1 + total) % total));
-    let html = '';
-    for (let i = 0; i < total; i++) {
-      if (i === current) html += '<span class="picker-route-dot picker-route-dot-current"></span>';
-      else if (path.has(i)) html += '<span class="picker-route-dot picker-route-dot-path"></span>';
-      else html += '<span class="picker-route-dot"></span>';
-    }
-    return html;
-  }
-
   function renderTask(index) {
     demoPhase = 'task';
     taskIndex = index;
     const t = tasks[index];
+    const leg = currentRoute && currentRoute.legs[index];
+    const legDist = leg ? Math.max(1, Math.round(leg.distanceM)) : null;
     setScreenMode('dark');
     pickerScreenEl.innerHTML = `
       <div class="picker-task-progress">Task ${index + 1} of ${tasks.length}</div>
+      <div class="picker-leg-label">🧭 Leg ${index + 1} of ${tasks.length}${legDist != null ? ` · ~${legDist}m walk` : ''}</div>
       <div class="picker-location-big">${escapeHtml(t.code)}</div>
       <div class="picker-location-sub">Rack ${escapeHtml(t.rackName)} · ${escapeHtml(t.bayLabel)} · Level ${t.levelNumber} · Pos ${escapeHtml(t.locationLabel || '1')}</div>
-      <div class="picker-route-map">${routeDotsHtml(index)}</div>
       <div class="picker-item-card">
-        <div class="picker-item-icon">📦</div>
+        ${productThumbHtml(t, 'picker-thumb-md')}
         <div class="picker-item-info">
           <div class="picker-item-name">${escapeHtml(t.description)}</div>
           <div class="picker-item-sku">${escapeHtml(t.partNumber)}</div>
@@ -193,8 +282,7 @@
       </div>
       <div class="picker-cta-wrap">
         <button type="button" class="picker-cta" id="pickerConfirmBtn">Confirm Pick</button>
-      </div>
-      <div class="picker-checkmark-overlay" id="pickerCheckmark"><div class="picker-checkmark-circle">✓</div></div>`;
+      </div>`;
     document.getElementById('pickerConfirmBtn').addEventListener('click', confirmPick);
     startPulseLoop();
   }
@@ -202,8 +290,12 @@
   function renderDone() {
     demoPhase = 'done';
     stopPulseLoop();
-    clearPlanHighlight();
     setScreenMode('dark');
+    // Leave the full route on the plan, shown as fully "walked" (muted),
+    // rather than abruptly blanking it — a small satisfying wrap-up beat.
+    if (planView && currentRoute) {
+      planView.render({ pickHighlight: null, pickRoute: { legs: currentRoute.legs, activeLegIndex: tasks.length, phase: 0 } });
+    }
     const elapsedS = Math.max(1, Math.round((Date.now() - (demoStartedAt || Date.now())) / 1000));
     const totalQty = tasks.reduce((sum, t) => sum + (Number(t.quantity) || 0), 0);
     pickerScreenEl.innerHTML = `
@@ -220,7 +312,17 @@
 
   function startPicking() {
     demoStartedAt = Date.now();
+    currentRoute = buildRoute(tasks);
     renderGenerating();
+    // Zoom the plan to just the planned route (not the whole warehouse) and
+    // show it in full right away, so "Generating your route…" pays off with
+    // an actual path rather than a blank map.
+    if (planView) {
+      planView.fitToPoints(allRoutePoints(currentRoute), 2.5, {
+        pickRoute: { legs: currentRoute.legs, activeLegIndex: 0, phase: pulsePhase },
+        pickHighlight: null
+      });
+    }
     setTimeout(() => {
       if (modal.hidden) return; // closed mid-transition — don't render into a hidden modal
       renderTask(0);
@@ -228,8 +330,12 @@
   }
 
   function confirmPick() {
-    const overlay = document.getElementById('pickerCheckmark');
-    if (overlay) overlay.classList.add('show');
+    const btn = document.getElementById('pickerConfirmBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('picker-cta-picked');
+      btn.textContent = '✓ Picked';
+    }
     setTimeout(() => {
       if (modal.hidden) return;
       if (taskIndex < tasks.length - 1) {
@@ -242,14 +348,17 @@
 
   function restartDemo() {
     tasks = buildTaskList();
+    currentRoute = null;
     taskIndex = 0;
     demoStartedAt = null;
+    if (planView) planView.resetView();
     renderIntro();
   }
 
   // ---------------- Open / close ----------------
   function openDemo() {
     tasks = buildTaskList();
+    currentRoute = null;
     taskIndex = 0;
     demoStartedAt = null;
     modal.hidden = false;
