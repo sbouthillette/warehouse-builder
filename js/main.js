@@ -8,6 +8,51 @@
   let editingBayId = null;
   let editingRackId = null;
   let editingLocationTypeId = null;
+  // renderLocationsTable() perf: reuse existing DOM nodes across renders
+  // instead of rebuilding the whole table on every store change — see that
+  // function for why. Reset whenever the table is fully torn down and
+  // rebuilt from scratch (locationsRowRefs -> new Map, locationsSyncedCodes
+  // -> new Set).
+  let locationsRowRefs = new Map(); // location code -> { tr, barcodeInput, typeSelect, statusSelect, checkboxes }
+  let locationsRenderedTypesSig = null;
+  let locationsSyncedCodes = new Set(); // codes with a non-default record as of the last render
+  // applyLockUI() perf: it used to re-scan and re-set `.disabled` on every
+  // input/select/checkbox in the ENTIRE Locations table on every single
+  // call — and it's called on every render, from every tab. At any real
+  // location count that scan (up to 8 form elements per row) dwarfed
+  // everything else this fix addresses. Track the locked state last
+  // applied to the table's cached elements; skip the sweep when it hasn't
+  // changed. Reset to null (forcing one re-sweep) whenever the table is
+  // rebuilt from scratch, since freshly-created elements always start
+  // enabled regardless of what was last applied.
+  let lastLocationsLockApplied = null;
+  // renderInventoryLocationOptions() perf: same problem as above — it used
+  // to rebuild the Add Inventory form's Location Code dropdown (one
+  // <option> per location, plus a blocked-status lookup per option) on
+  // every single store change, no matter which tab was active or whether
+  // anything it depends on (which locations exist, which are occupied,
+  // which are blocked) actually changed. Skip the rebuild entirely unless
+  // one of those three actually moved.
+  let lastInventoryOptionsLocs = null;
+  let lastInventoryOptionsSig = null;
+  // applyLockUI() perf: several render*Table() functions each call
+  // applyLockUI() themselves at their own end (so lock state is correct
+  // even if one of them is ever invoked on its own, outside a full
+  // renderAll() pass), and renderAll() also calls it once at the very end
+  // after everything has rebuilt. In a single renderAll() cycle that adds
+  // up to half a dozen calls — and even applyLockUI()'s SMALL, unrelated
+  // sweeps (a few sidebar forms, a handful of icon buttons) turned out to
+  // cost real time per call once the Locations table got large, because
+  // matching CSS selectors at all requires the browser to resolve style
+  // for the whole document, not just the matched elements. Rather than
+  // rely on every call site doing real work, suppress the nested calls
+  // while renderAll() is mid-pass and let its own trailing call — which
+  // always runs after every table has finished rebuilding — be the one
+  // that actually does the work, exactly once per store change. Direct
+  // calls made OUTSIDE of renderAll() (e.g. the lock/unlock button
+  // handler) are unaffected, since this flag is only ever true while
+  // renderAll() is synchronously executing.
+  let suppressApplyLockUI = false;
 
   // Standard rack/door colors, shared by the 2D plan, 3D view, and table swatches.
   const DOOR_COLORS = { garage: '#7C8892', regular: '#8B5E34' };
@@ -551,6 +596,7 @@
   // view, zoom/rotate/fit controls — none of which live inside these
   // containers) stays fully interactive either way.
   function applyLockUI() {
+    if (suppressApplyLockUI) return; // renderAll() is mid-pass — its own trailing call will do this
     const locked = store.isLocked();
     document.body.classList.toggle('warehouse-locked', locked);
     const banner = document.getElementById('lockBanner');
@@ -573,11 +619,17 @@
     ).forEach((el) => { el.disabled = locked; });
     // Locations table lives in .split-main-col (not .split-params-col, so
     // not covered by the blanket sweep above) but its per-row barcode/type/
-    // status/function inputs still need to lock.
-    document.querySelectorAll(
-      '#locationsTable .location-barcode-input, #locationsTable .location-type-select, ' +
-      '#locationsTable .location-status-select, #locationsTable .function-toggles input'
-    ).forEach((el) => { el.disabled = locked; });
+    // status/function inputs still need to lock. Skip the sweep (which can
+    // mean scanning tens of thousands of elements) when the lock state is
+    // already correctly applied to every cached row — see
+    // lastLocationsLockApplied's declaration for why this is safe.
+    if (lastLocationsLockApplied !== locked) {
+      document.querySelectorAll(
+        '#locationsTable .location-barcode-input, #locationsTable .location-type-select, ' +
+        '#locationsTable .location-status-select, #locationsTable .function-toggles input'
+      ).forEach((el) => { el.disabled = locked; });
+      lastLocationsLockApplied = locked;
+    }
     const delBtn = document.getElementById('btnDeleteWarehouse');
     if (delBtn) delBtn.disabled = locked;
     // Inventory tab isn't a split-editor form — Export is read-only and
@@ -2171,19 +2223,38 @@
   function renderInventoryLocationOptions() {
     const select = document.getElementById('invAddLocationCode');
     if (!select) return;
+    const locs = store.listLocations(); // memoized — same reference unless racks/templates changed
+    // Cheap to compute regardless of warehouse size: only as big as the
+    // inventory and the (sparse, configured-only) locationAttributes list —
+    // never the full location count. Lets most renders bail out before
+    // touching the (expensive, O(total locations)) option-rebuild below.
+    const blockedSig = (store.data.locationAttributes || [])
+      .filter((a) => a.status === 'blocked').map((a) => a.code).sort().join(',');
+    const occupiedSig = store.data.inventory.map((inv) => `${inv.code}:${inv.lpn || ''}`).sort().join(',');
+    const sig = blockedSig + '#' + occupiedSig;
+    if (locs === lastInventoryOptionsLocs && sig === lastInventoryOptionsSig) {
+      return; // nothing this dropdown depends on actually changed
+    }
+    lastInventoryOptionsLocs = locs;
+    lastInventoryOptionsSig = sig;
+
     const current = select.value;
     const occupiedByCode = new Map(store.data.inventory.map((inv) => [inv.code, inv]));
+    const blockedSet = new Set((store.data.locationAttributes || [])
+      .filter((a) => a.status === 'blocked').map((a) => a.code));
     select.innerHTML = '';
-    store.listLocations().forEach((loc) => {
+    const frag = document.createDocumentFragment();
+    locs.forEach((loc) => {
       const opt = document.createElement('option');
       opt.value = loc.code;
       const occ = occupiedByCode.get(loc.code);
-      const blocked = store.isLocationBlocked(loc.code);
+      const blocked = blockedSet.has(loc.code);
       const occLabel = occ ? ` (${occ.lpn ? `pallet ${occ.lpn}` : 'boxes'})` : '';
       opt.textContent = blocked ? `${loc.code} — BLOCKED` : `${loc.code}${occLabel}`;
       opt.disabled = blocked;
-      select.appendChild(opt);
+      frag.appendChild(opt);
     });
+    select.appendChild(frag);
     if (current && [...select.options].some((o) => o.value === current)) select.value = current;
   }
 
@@ -2553,10 +2624,33 @@
     document.getElementById('locationsUI').hidden = !hasRacks;
   }
 
+  // Every store mutation re-renders the whole app (see renderAll() below),
+  // so a single function-checkbox click used to rebuild this entire table
+  // — destroying and recreating every row's DOM (barcode input, two
+  // selects, five checkboxes), re-binding all their listeners, AND
+  // re-resolving every row's attributes/barcode via a linear array scan —
+  // on a warehouse with any real number of locations, that synchronous
+  // work is what made the checkbox appear to take seconds to visually tick
+  // (the browser can't paint the click until it finishes). Fixed in two
+  // layers:
+  //   1. Rows are only fully rebuilt when the underlying SET of locations
+  //      changes (a rack/bay/template was added/edited/removed — rare) or
+  //      when the Type catalog changes (only that row's <select> options,
+  //      also rare). Sub-element references (inputs/selects/checkboxes)
+  //      are cached per code in locationsRowRefs at creation time, so the
+  //      common path never calls querySelector.
+  //   2. The common case — one location's barcode/type/status/function
+  //      changed — only re-syncs codes that currently have (or, as of the
+  //      last render, HAD) a non-default record in the store's sparse
+  //      locationAttributes/locationBarcodes arrays. Both arrays only ever
+  //      contain locations someone actually configured (see
+  //      setLocationAttributes' all-default pruning), so this set is
+  //      bounded by how many locations have been touched, not by the
+  //      warehouse's total location count — a single edit stays O(1)-ish
+  //      no matter how big the warehouse is.
   function renderLocationsTable() {
     const tbody = document.querySelector('#locationsTable tbody');
     if (!tbody) return;
-    tbody.innerHTML = '';
     const types = store.data.locationTypes || [];
     const typeOptions = (selectedId) => {
       const opts = ['<option value="">—</option>']
@@ -2570,44 +2664,102 @@
       <label><input type="checkbox" data-code="${escapeHtml(code)}" data-fn="${f.key}" ${fns[f.key] ? 'checked' : ''} /> ${escapeHtml(f.label)}</label>
     `).join('');
 
-    store.listLocations().forEach((loc) => {
-      const attrs = store.getLocationAttributes(loc.code);
-      const barcode = store.getLocationBarcode(loc.code);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${escapeHtml(loc.code)}</td>
-        <td>${escapeHtml(loc.rackName || '')}</td>
-        <td>${escapeHtml(loc.bayLabel || '')}</td>
-        <td>${loc.levelNumber ?? ''}</td>
-        <td>${escapeHtml(loc.locationLabel || '')}</td>
-        <td><input type="text" class="location-barcode-input" data-code="${escapeHtml(loc.code)}" value="${escapeHtml(barcode)}" placeholder="—" /></td>
-        <td><select class="locations-inline-select location-type-select" data-code="${escapeHtml(loc.code)}">${typeOptions(attrs.typeId)}</select></td>
-        <td><select class="locations-inline-select location-status-select ${attrs.status === 'blocked' ? 'locations-status-blocked' : ''}" data-code="${escapeHtml(loc.code)}">${statusOptions(attrs.status)}</select></td>
-        <td><div class="function-toggles">${functionToggles(loc.code, attrs.functions)}</div></td>`;
-      tbody.appendChild(tr);
-    });
+    const locs = store.listLocations(); // memoized in model.js — cheap unless racks/templates changed
+    const codes = locs.map((l) => l.code);
+    const sameRowSet = codes.length === locationsRowRefs.size && codes.every((c) => locationsRowRefs.has(c));
+    const typesSig = types.map((t) => `${t.id}:${t.name}`).join('|');
+    const typesChanged = typesSig !== locationsRenderedTypesSig;
+    locationsRenderedTypesSig = typesSig;
 
-    tbody.querySelectorAll('.location-barcode-input').forEach((input) => {
-      input.addEventListener('change', () => {
-        store.setLocationBarcode(input.dataset.code, input.value);
+    if (!sameRowSet) {
+      // Structural change (rack/bay/template added, edited, or removed) —
+      // full rebuild, same as before this fix.
+      tbody.innerHTML = '';
+      locationsRowRefs = new Map();
+      lastLocationsLockApplied = null; // fresh elements always start enabled — force applyLockUI() to re-sweep
+      locs.forEach((loc) => {
+        const attrs = store.getLocationAttributes(loc.code);
+        const barcode = store.getLocationBarcode(loc.code);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(loc.code)}</td>
+          <td>${escapeHtml(loc.rackName || '')}</td>
+          <td>${escapeHtml(loc.bayLabel || '')}</td>
+          <td>${loc.levelNumber ?? ''}</td>
+          <td>${escapeHtml(loc.locationLabel || '')}</td>
+          <td><input type="text" class="location-barcode-input" data-code="${escapeHtml(loc.code)}" value="${escapeHtml(barcode)}" placeholder="—" /></td>
+          <td><select class="locations-inline-select location-type-select" data-code="${escapeHtml(loc.code)}">${typeOptions(attrs.typeId)}</select></td>
+          <td><select class="locations-inline-select location-status-select ${attrs.status === 'blocked' ? 'locations-status-blocked' : ''}" data-code="${escapeHtml(loc.code)}">${statusOptions(attrs.status)}</select></td>
+          <td><div class="function-toggles">${functionToggles(loc.code, attrs.functions)}</div></td>`;
+        tbody.appendChild(tr);
+
+        const barcodeInput = tr.querySelector('.location-barcode-input');
+        const typeSelect = tr.querySelector('.location-type-select');
+        const statusSelect = tr.querySelector('.location-status-select');
+        const checkboxes = {};
+        tr.querySelectorAll('.function-toggles input[type="checkbox"]').forEach((cb) => {
+          checkboxes[cb.dataset.fn] = cb;
+        });
+        locationsRowRefs.set(loc.code, { tr, barcodeInput, typeSelect, statusSelect, checkboxes });
+
+        barcodeInput.addEventListener('change', () => {
+          store.setLocationBarcode(loc.code, barcodeInput.value);
+        });
+        typeSelect.addEventListener('change', () => {
+          store.setLocationAttributes(loc.code, { typeId: typeSelect.value || null });
+        });
+        statusSelect.addEventListener('change', () => {
+          store.setLocationAttributes(loc.code, { status: statusSelect.value });
+        });
+        Model.LOCATION_FUNCTIONS.forEach((f) => {
+          const cb = checkboxes[f.key];
+          cb.addEventListener('change', () => {
+            store.setLocationAttributes(loc.code, { functions: { [f.key]: cb.checked } });
+          });
+        });
       });
-    });
-    tbody.querySelectorAll('.location-type-select').forEach((sel) => {
-      sel.addEventListener('change', () => {
-        store.setLocationAttributes(sel.dataset.code, { typeId: sel.value || null });
+      // Every row was just built fresh from the store, so it's already in
+      // sync — seed the tracked set from the sparse records directly
+      // rather than re-deriving it.
+      locationsSyncedCodes = new Set([
+        ...(store.data.locationAttributes || []).map((a) => a.code),
+        ...(store.data.locationBarcodes || []).map((b) => b.code)
+      ]);
+    } else if (typesChanged) {
+      // Same locations, but the Type catalog changed (add/rename/delete a
+      // type) — only the Type <select> options need rebuilding per row.
+      locs.forEach((loc) => {
+        const refs = locationsRowRefs.get(loc.code);
+        const attrs = store.getLocationAttributes(loc.code);
+        refs.typeSelect.innerHTML = typeOptions(attrs.typeId);
       });
-    });
-    tbody.querySelectorAll('.location-status-select').forEach((sel) => {
-      sel.addEventListener('change', () => {
-        store.setLocationAttributes(sel.dataset.code, { status: sel.value });
+    } else {
+      // Common case: a barcode/type/status/function changed on one (or a
+      // few) locations. Re-sync only the codes that are (or were) actually
+      // configured — see the function-level comment above for why that's
+      // enough — using cached element references, so this is fast
+      // regardless of how many locations the warehouse has in total.
+      const currentConfiguredCodes = new Set([
+        ...(store.data.locationAttributes || []).map((a) => a.code),
+        ...(store.data.locationBarcodes || []).map((b) => b.code)
+      ]);
+      const codesToSync = new Set([...currentConfiguredCodes, ...locationsSyncedCodes]);
+      codesToSync.forEach((code) => {
+        const refs = locationsRowRefs.get(code);
+        if (!refs) return; // defensive — sameRowSet true means this shouldn't happen
+        const attrs = store.getLocationAttributes(code);
+        const barcode = store.getLocationBarcode(code);
+        if (document.activeElement !== refs.barcodeInput) refs.barcodeInput.value = barcode;
+        refs.typeSelect.value = attrs.typeId || '';
+        refs.statusSelect.value = attrs.status;
+        refs.statusSelect.classList.toggle('locations-status-blocked', attrs.status === 'blocked');
+        Model.LOCATION_FUNCTIONS.forEach((f) => {
+          refs.checkboxes[f.key].checked = !!attrs.functions[f.key];
+        });
       });
-    });
-    tbody.querySelectorAll('.function-toggles input[type="checkbox"]').forEach((cb) => {
-      cb.addEventListener('change', () => {
-        store.setLocationAttributes(cb.dataset.code, { functions: { [cb.dataset.fn]: cb.checked } });
-      });
-    });
-    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
+      locationsSyncedCodes = currentConfiguredCodes;
+    }
+    applyLockUI(); // rebuilt/updated rows above start out enabled — re-apply if locked
   }
 
   // ---------------- Location Types (managed catalog, part of Tab 10) ----------------
@@ -2726,34 +2878,44 @@
 
   // ---------------- global re-render on any data change ----------------
   function renderAll() {
-    renderLockButton();
-    renderWarehouseSummary();
-    renderMezzanineGate();
-    renderZonesGate();
-    renderZonesTable();
-    renderDoorsGate();
-    renderWallOptions();
-    renderDoorsTable();
-    renderBayTable();
-    renderRackTemplateOptions();
-    renderRacksGate();
-    renderFloorToggleVisibility();
-    renderRacksTable();
-    renderInventoryGate();
-    renderInventorySummary();
-    renderInventoryLocationOptions();
-    renderItemCatalogDatalist();
-    renderInventoryTable();
-    renderItemsTable();
-    renderLocationsGate();
-    renderLocationsTable();
-    renderLocationTypesTable();
-    renderLegend();
-    if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
-    if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
-    if (currentTab === 'doors') renderDoorsPlanPreview();
-    if (currentTab === 'zones') renderZonesPlanPreview();
-    if (currentTab === 'racks') renderRacksPlanPreview();
+    // See suppressApplyLockUI's declaration: every render*() call below may
+    // try to call applyLockUI() itself, but those all become no-ops for the
+    // duration of this pass — restored (in `finally`, so a mid-pass error
+    // can't leave lock-enforcement silently disabled) right before the one
+    // call that actually matters, below.
+    suppressApplyLockUI = true;
+    try {
+      renderLockButton();
+      renderWarehouseSummary();
+      renderMezzanineGate();
+      renderZonesGate();
+      renderZonesTable();
+      renderDoorsGate();
+      renderWallOptions();
+      renderDoorsTable();
+      renderBayTable();
+      renderRackTemplateOptions();
+      renderRacksGate();
+      renderFloorToggleVisibility();
+      renderRacksTable();
+      renderInventoryGate();
+      renderInventorySummary();
+      renderInventoryLocationOptions();
+      renderItemCatalogDatalist();
+      renderInventoryTable();
+      renderItemsTable();
+      renderLocationsGate();
+      renderLocationsTable();
+      renderLocationTypesTable();
+      renderLegend();
+      if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
+      if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);
+      if (currentTab === 'doors') renderDoorsPlanPreview();
+      if (currentTab === 'zones') renderZonesPlanPreview();
+      if (currentTab === 'racks') renderRacksPlanPreview();
+    } finally {
+      suppressApplyLockUI = false;
+    }
     // Runs last — after every table above has rebuilt its rows (and thus its
     // Edit/Delete/Convert buttons) from scratch — so the disabled state
     // always applies to the DOM that's actually on screen.

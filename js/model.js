@@ -695,6 +695,8 @@ class Store {
     this.saveListeners = [];    // fn(state) — 'idle' | 'pending' | 'saving' | 'saved' | 'error'
     this.saveTimer = null;
     this.saveState = 'idle';
+    this._locationsCache = null;   // memoized listLocations() result — see that method
+    this._locationsCacheSig = null;
   }
 
   onChange(fn) { this.listeners.push(fn); }
@@ -1156,7 +1158,21 @@ class Store {
   // (Part Number left blank) for someone to fill in and re-import, and
   // re-derives it fresh at import time to match rows back to real
   // rackId/bayIndex/levelIndex/locationIndex by exact `code` match.
+  // Cheap to call repeatedly: the full flatten below only re-runs when the
+  // rack/bay-template geometry that determines WHICH locations exist has
+  // actually changed (racks or bayTemplates), detected via a JSON snapshot
+  // of just those two arrays (small — tens of racks/templates, not
+  // thousands of locations). Every other store mutation (inventory edits,
+  // location attributes, barcodes, etc.) gets back the same cached array
+  // instance instead of re-walking every rack/bay/level/position from
+  // scratch. This method used to be the dominant cost behind a laggy
+  // Locations tab (Tab 10): it re-ran in full on every single checkbox
+  // toggle via the global render-on-notify() cascade.
   listLocations() {
+    const sig = JSON.stringify(this.data.racks) + '#' + JSON.stringify(this.data.bayTemplates);
+    if (this._locationsCache && this._locationsCacheSig === sig) {
+      return this._locationsCache;
+    }
     const out = [];
     this.data.racks.forEach((rack) => {
       const tpl = this.getRackTemplate(rack);
@@ -1184,6 +1200,8 @@ class Store {
         });
       }
     });
+    this._locationsCache = out;
+    this._locationsCacheSig = sig;
     return out;
   }
 
