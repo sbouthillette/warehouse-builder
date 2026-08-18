@@ -761,6 +761,14 @@ h2 {
 }
 .info-panel-row span:last-child { color: var(--ink); font-weight: 500; }
 
+/* Fabricated-but-plausible "sales" stat tile inside the click-info popup
+   (see js/three3d.js, fakeSalesFor/salesSparkline) — demo dressing only. */
+.info-panel-sales { margin: 4px 0 2px; }
+.info-panel-row span.sales-delta-up { color: var(--status-success-text); font-weight: 600; }
+.info-panel-row span.sales-delta-down { color: var(--status-danger-text); font-weight: 600; }
+.sales-spark { display: block; width: 100%; height: 26px; margin: 2px 0; }
+.info-panel-sales-note { font-size: 10.5px; font-style: italic; color: var(--ink-secondary); opacity: 0.8; }
+
 .split-preview-col .three-wrap {
   height: calc((100vh - 230px) * 0.75);
   min-height: 300px;

@@ -49,6 +49,74 @@ function escapeHtmlLocal(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Deterministic string -> PRNG, so the "sales" numbers below are stable for
+// a given part number instead of reshuffling every time the panel opens.
+// This is purely cosmetic demo dressing — see fakeSalesFor().
+function seededRng(seedStr) {
+  let h = 2166136261 >>> 0; // FNV-1a
+  for (let i = 0; i < seedStr.length; i++) {
+    h ^= seedStr.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let a = h >>> 0;
+  return function next() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Fabricated-but-plausible sales history for a SKU, purely to make the demo
+// feel populated (this warehouse has no real sales system behind it). Never
+// presented as real: the panel always labels it "demo data" (see below).
+// Seeded by part number so the same product shows the same numbers every
+// time it's clicked, rather than jumping around.
+function fakeSalesFor(partNumber) {
+  const rng = seededRng(String(partNumber || 'unknown'));
+  const price = Math.round((6 + rng() * 90) * 100) / 100; // $6-$96/unit
+  const weeks = 12;
+  const baseline = 8 + rng() * 40; // weekly unit velocity
+  const drift = (rng() - 0.45) * 0.06; // slight up/down trend per week
+  const weekly = [];
+  let level = baseline;
+  for (let i = 0; i < weeks; i++) {
+    level = Math.max(0, level * (1 + drift) + (rng() - 0.5) * baseline * 0.35);
+    weekly.push(Math.round(level));
+  }
+  const sum = (arr) => arr.reduce((a, b) => a + b, 0);
+  const last30 = weekly.slice(-4);
+  const prior30 = weekly.slice(-8, -4);
+  const unitsLast30 = sum(last30);
+  const unitsPrior30 = sum(prior30);
+  const deltaPct = unitsPrior30 > 0 ? ((unitsLast30 - unitsPrior30) / unitsPrior30) * 100 : 0;
+  return { weekly, unitsLast30, deltaPct, revenueLast30: Math.round(unitsLast30 * price) };
+}
+
+// 12-week sparkline: history in a muted tone, the current-period tail (last
+// `currentWeeks` points) picked out in the brand accent, per the app's
+// stat-tile convention. vector-effect keeps the 2px stroke crisp even
+// though the viewBox is stretched to fill the panel's width.
+function salesSparkline(weekly, currentWeeks) {
+  const w = 100, h = 26, pad = 2;
+  const max = Math.max(1, ...weekly);
+  const stepX = (w - pad * 2) / (weekly.length - 1);
+  const pts = weekly.map((v, i) => [
+    pad + i * stepX,
+    h - pad - (v / max) * (h - pad * 2)
+  ]);
+  const toPath = (points) => points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const splitAt = Math.max(0, weekly.length - currentWeeks);
+  const historyPath = toPath(pts.slice(0, splitAt + 1));
+  const currentPath = toPath(pts.slice(splitAt));
+  return `
+    <svg class="sales-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <path d="${historyPath}" fill="none" stroke="var(--ink-secondary)" stroke-opacity="0.4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+      <path d="${currentPath}" fill="none" stroke="var(--primary-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+    </svg>
+  `;
+}
+
 function showInventoryInfo(inv) {
   if (!infoPanel) return;
   const contents = Array.isArray(inv.contents) ? inv.contents : [];
@@ -56,17 +124,31 @@ function showInventoryInfo(inv) {
   const findItem = (pn) => catalog.find((it) => it.partNumber === pn) || null;
   // Each content line gets its own mini card: part number/quantity plus,
   // when the part number has a matching Items-tab catalog entry, its
-  // description and photo.
+  // description, photo, and a fabricated-but-plausible "sales" stat tile
+  // (demo dressing — labeled as such — since there's no real sales system
+  // behind this warehouse).
   const contentsRows = contents.map((line) => {
     const item = findItem(line.partNumber);
     const photo = item && item.imageDataUrl ? `<img class="info-panel-photo lightbox-trigger" src="${item.imageDataUrl}" alt="${escapeHtmlLocal(item.description || line.partNumber)}" />` : '';
     const desc = item && item.description
       ? `<div class="info-panel-row"><span>Description</span><span>${escapeHtmlLocal(item.description)}</span></div>`
       : '';
+    const sales = fakeSalesFor(line.partNumber);
+    const deltaUp = sales.deltaPct >= 0;
+    const deltaLabel = `${deltaUp ? '▲' : '▼'} ${Math.abs(sales.deltaPct).toFixed(0)}%`;
+    const salesBlock = `
+      <div class="info-panel-sales">
+        <div class="info-panel-row"><span>Sales (30d)</span><span>${sales.unitsLast30.toLocaleString()} units · $${sales.revenueLast30.toLocaleString()}</span></div>
+        <div class="info-panel-row"><span>vs. prior 30d</span><span class="${deltaUp ? 'sales-delta-up' : 'sales-delta-down'}">${deltaLabel}</span></div>
+        ${salesSparkline(sales.weekly, 4)}
+        <div class="info-panel-sales-note">Illustrative demo data, not actual sales</div>
+      </div>
+    `;
     return `
       <div class="info-panel-row"><span>${escapeHtmlLocal(line.partNumber)}</span><span>Qty ${escapeHtmlLocal(line.quantity)}</span></div>
       ${desc}
       ${photo}
+      ${salesBlock}
     `;
   }).join('<hr class="info-panel-divider" />');
   const barcode = lastStore && typeof lastStore.getLocationBarcode === 'function' ? lastStore.getLocationBarcode(inv.code) : '';
