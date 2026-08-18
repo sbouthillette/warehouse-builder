@@ -105,23 +105,33 @@
   // planner. Each task's "stand point" is a spot in the aisle directly in
   // front of its target bay, derived from the rack's real picking-edge
   // geometry (Model.rackPickingEdge), so the route line always terminates
-  // exactly where the pulsing pick highlight appears. Consecutive stops in
-  // the same aisle connect with a straight line. Stops in different aisles
-  // route via a transfer corridor that sits entirely outside every rack's
-  // footprint (past whichever end of the rack rows is closer) rather than
-  // a naive diagonal — a straight elbow through the middle of the
-  // warehouse would often cut straight through an intervening rack.
-  function computeRackBoundsWorld() {
-    const racks = store.data.racks || [];
-    if (!racks.length) return null;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    racks.forEach((r) => {
+  // exactly where the pulsing pick highlight appears.
+  //
+  // Rather than guessing a route from each point's aisle orientation (which
+  // breaks down whenever the two points face different directions — e.g.
+  // the picker's floor-level start point vs. a rack whose picking side is
+  // east/west instead of north/south — every leg is chosen by generating a
+  // handful of candidate paths and picking the first one that's actually
+  // verified clear of every rack's footprint, using the same rectangle
+  // geometry the racks are drawn with. This is what guarantees the route
+  // never gets drawn cutting through a rack, instead of just usually
+  // avoiding it.
+  function computeRackRectsWorld() {
+    return (store.data.racks || []).map((r) => {
       const fp = store.rackFootprint(r);
       const rot = r.rotation === 90;
       const w = rot ? fp.depthM : fp.lengthM;
       const h = rot ? fp.lengthM : fp.depthM;
-      minX = Math.min(minX, r.x); maxX = Math.max(maxX, r.x + w);
-      minY = Math.min(minY, r.y); maxY = Math.max(maxY, r.y + h);
+      return { x0: r.x, x1: r.x + w, y0: r.y, y1: r.y + h };
+    });
+  }
+
+  function computeRackBoundsWorld(rackRects) {
+    if (!rackRects.length) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    rackRects.forEach((r) => {
+      minX = Math.min(minX, r.x0); maxX = Math.max(maxX, r.x1);
+      minY = Math.min(minY, r.y0); maxY = Math.max(maxY, r.y1);
     });
     return { minX, maxX, minY, maxY };
   }
@@ -132,9 +142,9 @@
     const doors = store.data.doors || [];
     if (doors.length) {
       const dp = Model.doorPoints(wh.shape, store.data.walls, doors[0]);
-      if (dp) return { x: (dp.start.x + dp.end.x) / 2, y: (dp.start.y + dp.end.y) / 2, axis: 'h' };
+      if (dp) return { x: (dp.start.x + dp.end.x) / 2, y: (dp.start.y + dp.end.y) / 2 };
     }
-    return { x: bounds.minX + 1.5, y: bounds.minY + 1.5, axis: 'h' };
+    return { x: bounds.minX + 1.5, y: bounds.minY + 1.5 };
   }
 
   function standPointForTask(t) {
@@ -151,47 +161,79 @@
     const faceX = edge.p1.x + (edge.p2.x - edge.p1.x) * frac;
     const faceY = edge.p1.y + (edge.p2.y - edge.p1.y) * frac;
     const standOff = Math.max(0.8, Math.min((rack.aisleWidth || 3) / 2, 1.6));
-    return {
-      x: faceX + edge.nx * standOff,
-      y: faceY + edge.ny * standOff,
-      axis: edge.ny !== 0 ? 'h' : 'v' // 'h' = aisle runs along X at a fixed Y, 'v' = along Y at a fixed X
-    };
+    return { x: faceX + edge.nx * standOff, y: faceY + edge.ny * standOff };
+  }
+
+  // Liang-Barsky segment-vs-rectangle clip test, inset slightly so a point
+  // that legitimately sits right at a rack's edge (the aisle stand-off)
+  // isn't flagged as touching it.
+  function segmentCrossesRect(p1, p2, rect) {
+    const inset = 0.05;
+    const rx0 = rect.x0 + inset, rx1 = rect.x1 - inset;
+    const ry0 = rect.y0 + inset, ry1 = rect.y1 - inset;
+    if (rx1 <= rx0 || ry1 <= ry0) return false;
+    let t0 = 0, t1 = 1;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const checks = [[-dx, p1.x - rx0], [dx, rx1 - p1.x], [-dy, p1.y - ry0], [dy, ry1 - p1.y]];
+    for (const [p, q] of checks) {
+      if (p === 0) {
+        if (q < 0) return false;
+      } else {
+        const r = q / p;
+        if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+        else { if (r < t0) return false; if (r < t1) t1 = r; }
+      }
+    }
+    return t0 < t1;
+  }
+
+  function pathCrossingCount(points, rackRects) {
+    let crossings = 0;
+    for (let i = 1; i < points.length; i++) {
+      rackRects.forEach((rect) => { if (segmentCrossesRect(points[i - 1], points[i], rect)) crossings++; });
+    }
+    return crossings;
   }
 
   const TRANSFER_MARGIN = 1.2; // clearance beyond the rack rows' outer edge, in metres
 
-  function legPoints(a, b, rackBounds) {
-    if (a.axis === b.axis) {
-      const same = Math.abs(a.axis === 'h' ? a.y - b.y : a.x - b.x) < 0.05;
-      if (same) return [a, b]; // same aisle — straight line stays inside it
-
-      if (!rackBounds) {
-        const elbow = a.axis === 'h' ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
-        return [a, elbow, b];
-      }
-      if (a.axis === 'h') {
-        // Both points front a horizontal row at a different y — walk out to
-        // whichever end of the combined rack rows (west/east) is closer,
-        // travel the cross-aisle gap outside every rack's x-extent, then in.
-        const west = rackBounds.minX - TRANSFER_MARGIN;
-        const east = rackBounds.maxX + TRANSFER_MARGIN;
-        const avgX = (a.x + b.x) / 2;
-        const transferX = Math.abs(avgX - west) <= Math.abs(east - avgX) ? west : east;
-        return [a, { x: transferX, y: a.y }, { x: transferX, y: b.y }, b];
-      }
-      // 'v' axis — same idea, transferring north/south of every rack's y-extent.
-      const north = rackBounds.maxY + TRANSFER_MARGIN;
-      const south = rackBounds.minY - TRANSFER_MARGIN;
-      const avgY = (a.y + b.y) / 2;
-      const transferY = Math.abs(avgY - south) <= Math.abs(north - avgY) ? south : north;
-      return [a, { x: a.x, y: transferY }, { x: b.x, y: transferY }, b];
+  // Candidate paths from a to b, cheapest/simplest first: a direct line, an
+  // "L" bent one way, an "L" bent the other way, then four corridor routes
+  // that each go the long way around — out past one end of every rack row
+  // (west/east/south/north of the combined rack footprint, well outside
+  // it) — so at least one candidate is always geometrically guaranteed
+  // clear of every rack regardless of orientation.
+  function candidatePaths(a, b, rackBounds) {
+    const candidates = [
+      [a, b],
+      [a, { x: b.x, y: a.y }, b],
+      [a, { x: a.x, y: b.y }, b]
+    ];
+    if (rackBounds) {
+      const west = rackBounds.minX - TRANSFER_MARGIN, east = rackBounds.maxX + TRANSFER_MARGIN;
+      const south = rackBounds.minY - TRANSFER_MARGIN, north = rackBounds.maxY + TRANSFER_MARGIN;
+      candidates.push([a, { x: west, y: a.y }, { x: west, y: b.y }, b]);
+      candidates.push([a, { x: east, y: a.y }, { x: east, y: b.y }, b]);
+      candidates.push([a, { x: a.x, y: south }, { x: b.x, y: south }, b]);
+      candidates.push([a, { x: a.x, y: north }, { x: b.x, y: north }, b]);
     }
-    // Mixed axis (rare — racks with different picking-side orientations):
-    // route via a single corner point guaranteed to sit outside every
-    // rack's footprint, so at least the transfer itself can't clip a rack.
-    if (!rackBounds) return [a, { x: b.x, y: a.y }, b];
-    const corner = { x: rackBounds.minX - TRANSFER_MARGIN, y: rackBounds.minY - TRANSFER_MARGIN };
-    return [a, corner, b];
+    return candidates;
+  }
+
+  function bestSafePath(a, b, rackRects, rackBounds) {
+    const candidates = candidatePaths(a, b, rackBounds);
+    for (const c of candidates) {
+      if (pathCrossingCount(c, rackRects) === 0) return c;
+    }
+    // Unusual layout where every candidate clips something — fall back to
+    // whichever crosses the fewest rack edges rather than always picking
+    // the same (possibly worst) option.
+    let best = candidates[0], bestCrossings = Infinity;
+    candidates.forEach((c) => {
+      const crossings = pathCrossingCount(c, rackRects);
+      if (crossings < bestCrossings) { bestCrossings = crossings; best = c; }
+    });
+    return best;
   }
 
   function pathLength(points) {
@@ -203,13 +245,14 @@
   }
 
   function buildRoute(taskList) {
-    const rackBounds = computeRackBoundsWorld();
+    const rackRects = computeRackRectsWorld();
+    const rackBounds = computeRackBoundsWorld(rackRects);
     let prev = computeStartPoint();
     const legs = [];
     taskList.forEach((t, i) => {
       const stand = standPointForTask(t);
       const dest = stand || prev;
-      const pts = legPoints(prev, dest, rackBounds);
+      const pts = bestSafePath(prev, dest, rackRects, rackBounds);
       legs.push({ taskIndex: i, points: pts, distanceM: pathLength(pts) });
       prev = dest;
     });
