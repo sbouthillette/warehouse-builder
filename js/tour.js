@@ -40,7 +40,7 @@
       tab: 'bays',
       target: '#bayPreviewContainer',
       title: '2. Bay Builder',
-      body: 'Design a single rack bay — uprights, beams, levels, load rating — as a reusable template you duplicate to build full racks.'
+      body: "Design a single rack bay as a reusable template — uprights, beams, and as many levels as you need. Configure each level independently: pallet storage or picking shelves for loose items, each with its own clear height, weight limit, and number of positions (two pallet slots, five or six picking shelves — whatever that level actually holds). Duplicate the finished template to build out full racks."
     },
     {
       tab: 'racks',
