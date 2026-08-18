@@ -606,11 +606,64 @@
       ctx.lineCap = 'butt';
     }
 
+    // Pulses a glowing highlight around one specific bay slice of an
+    // existing (already-saved) rack — used by the Guided Picking demo
+    // (js/guidedPickingDemo.js) to show the current pick task's target
+    // location on the real plan. Distinct in color (tertiary/plum) and
+    // treatment (a soft glow + pulsing dot, no dashed "editing" outline)
+    // from drawDraftRack above, since this isn't an in-progress edit — it's
+    // pointing at a location that already exists. `h` is
+    // { rackId, bayIndex, phase } — `phase` (radians) drives the pulse via
+    // Math.sin, advanced by the caller's own animation loop each frame.
+    function drawPickHighlight(h) {
+      if (!h) return;
+      const store = window.WarehouseStore;
+      const rack = store.data.racks.find((r) => r.id === h.rackId);
+      if (!rack) return;
+      const tpl = store.getRackTemplate(rack);
+      if (!tpl) return;
+      const fp = store.rackFootprint(rack);
+      const rot = rack.rotation === 90;
+      const w = rot ? fp.depthM : fp.lengthM;
+      const hh = rot ? fp.lengthM : fp.depthM;
+      const a = worldToScreen(rack.x, rack.y);
+      const b = worldToScreen(rack.x + w, rack.y + hh);
+      const x = Math.min(a.sx, b.sx), y = Math.min(a.sy, b.sy);
+      const pw = Math.abs(b.sx - a.sx), ph = Math.abs(b.sy - a.sy);
+
+      const bayCount = Math.max(1, rack.bayCount);
+      const bayIndex = Math.max(0, Math.min(bayCount - 1, h.bayIndex || 0));
+      const frac0 = bayIndex / bayCount, frac1 = (bayIndex + 1) / bayCount;
+      let bx, by, bw, bh;
+      if (!rot) { bx = x + pw * frac0; by = y; bw = pw * (frac1 - frac0); bh = ph; }
+      else { by = y + ph * frac0; bx = x; bh = ph * (frac1 - frac0); bw = pw; }
+
+      const pulse = 0.5 + 0.5 * Math.sin(h.phase || 0);
+      ctx.save();
+      ctx.fillStyle = hexToRgba('#BC5C92', 0.16 + 0.22 * pulse); // tertiary
+      ctx.fillRect(bx - 6, by - 6, bw + 12, bh + 12);
+      ctx.strokeStyle = '#BC5C92';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(bx - 2, by - 2, bw + 4, bh + 4);
+      ctx.restore();
+
+      const cx = bx + bw / 2, cy = by + bh / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 5 + 3 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = '#BC5C92';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     // `draft` (optional) is { door: {...} }, { zone: {...} }, { wall: {...} },
-    // or { rack: {...} } — the current unsaved form state from the Doors /
-    // Zones & Obstacles / Interior Walls / Racks & Aisles tabs, highlighted
-    // on top of the normal plan. Passing nothing keeps whatever draft was
-    // last set (so pan/zoom/resize re-renders don't lose the highlight).
+    // { rack: {...} }, or { pickHighlight: {...} } (see drawPickHighlight
+    // above) — the current unsaved form state from the Doors / Zones &
+    // Obstacles / Interior Walls / Racks & Aisles tabs (or the Guided
+    // Picking demo's current target), highlighted on top of the normal
+    // plan. Passing nothing keeps whatever draft was last set (so
+    // pan/zoom/resize re-renders don't lose the highlight).
     function render(draft) {
       if (draft !== undefined) lastDraft = draft;
       resizeCanvas();
@@ -649,6 +702,9 @@
       if (lastDraft && lastDraft.rack) drawDraftRack(lastDraft.rack);
       drawDoors(store.data.doors, wh, store.data.walls);
       if (lastDraft && lastDraft.door) drawDraftDoor(wh, store.data.walls, lastDraft.door);
+      // Drawn last (on top of everything, including doors) so the pulsing
+      // pick-target highlight is never visually buried under other overlays.
+      if (lastDraft && lastDraft.pickHighlight) drawPickHighlight(lastDraft.pickHighlight);
       drawScaleBar();
     }
 

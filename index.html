@@ -87,6 +87,13 @@
     <button id="btnToggleLock" class="btn btn-ghost">🔒 Lock</button>
     <button id="btnDeleteWarehouse" class="btn btn-danger-ghost">Delete Warehouse</button>
     <span id="lockBanner" class="lock-banner" hidden>🔒 Locked — read-only. Unlock to make changes.</span>
+    <!-- Concept preview, not a real feature — see js/guidedPickingDemo.js.
+         Pushed to the far right (margin-left:auto) and visually distinct
+         (tertiary/plum + "PREVIEW" badge) from the real warehouse-editing
+         controls to its left, so it doesn't read as shipped functionality. -->
+    <button id="btnGuidedPickingDemo" class="btn btn-demo switcherbar-demo-btn">
+      🚶 Demo: Guided Picking <span class="demo-badge">PREVIEW</span>
+    </button>
   </div>
 
   <div id="emptyState" class="empty-state" hidden>
@@ -799,6 +806,40 @@
   </div>
 </div>
 
+<!-- Guided Picking demo (js/guidedPickingDemo.js) — a concept preview, NOT
+     real functionality: nothing here reads or writes actual inventory, and
+     nothing is persisted. The task list is generated from whatever's
+     actually occupying locations in the currently-open warehouse (so it
+     looks authentic), but "Confirm Pick" just advances a script — no
+     inventory is deducted, no barcode is scanned, no store method is
+     called. Purely a demo aid for showing what a picker's handheld screen
+     could look like, paired with the real 2D plan highlighting the
+     current target location. -->
+<div id="guidedPickingModal" class="modal-overlay" hidden>
+  <div class="modal-card modal-card-guided-picking">
+    <div class="modal-header">
+      <h2>Guided Picking <span class="demo-badge">PREVIEW</span></h2>
+      <button type="button" id="btnCloseGuidedPickingModal" class="icon-btn" title="Close">✕</button>
+    </div>
+    <p class="hint">A concept preview of what a picker's handheld screen could look like — paired with the live 2D plan. The task list below is pulled from this warehouse's real inventory, but nothing here is functional: no scan, no inventory change, nothing saved.</p>
+
+    <div id="guidedPickingEmpty" class="gate-message">No inventory yet in this warehouse — add some on the Inventory tab (Tab 8), then reopen this preview.</div>
+
+    <div id="guidedPickingBody" class="guided-picking-layout">
+      <div class="picker-phone">
+        <div class="picker-statusbar"><span>9:41</span><span class="picker-statusbar-icons">•••</span></div>
+        <div id="pickerScreen" class="picker-screen"></div>
+      </div>
+      <div class="guided-picking-plan-wrap">
+        <div class="guided-picking-plan-label">Live 2D plan — target location highlighted</div>
+        <div class="guided-picking-plan-canvas-wrap">
+          <canvas id="guidedPickingPlanCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Guided tour overlay (js/tour.js) — spotlight ring + fixed caption card,
      auto-starts once for first-time guests, replayable by admins via the
      "Replay Tour" button above. -->
@@ -838,6 +879,7 @@
 <script type="module" src="js/baypreview3d.js"></script>
 <script src="js/main.js"></script>
 <script src="js/tour.js"></script>
+<script src="js/guidedPickingDemo.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
