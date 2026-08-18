@@ -554,6 +554,11 @@
     document.body.classList.toggle('warehouse-locked', locked);
     const banner = document.getElementById('lockBanner');
     if (banner) banner.hidden = !(locked && store.currentId);
+    // #tab-inventory's .split-params-col is deliberately NOT in this list —
+    // it now holds btnExportLocations too (see index.html, Tab 7), which
+    // must stay enabled even when locked (read-only). Its mutating controls
+    // (Import, Clear, the Add Inventory form) are disabled individually
+    // further below instead of via this blanket sweep.
     document.querySelectorAll(
       '#tab-warehouse .split-params-col, #tab-zones .split-params-col, ' +
       '#tab-doors .split-params-col, #tab-bays .split-params-col, #tab-racks .split-params-col, ' +
@@ -563,16 +568,8 @@
     });
     document.querySelectorAll(
       '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
-      '#inventoryTable .icon-btn, #itemsTable .icon-btn, #locationBarcodesTable .icon-btn'
+      '#inventoryTable .icon-btn, #itemsTable .icon-btn'
     ).forEach((el) => { el.disabled = locked; });
-    // Location Barcodes table lives directly on the Inventory tab (not
-    // inside a .split-params-col), so its inline barcode inputs need their
-    // own disabled toggle here.
-    document.querySelectorAll('#locationBarcodesTable .barcode-input').forEach((el) => { el.disabled = locked; });
-    const fillBarcodesBtn = document.getElementById('btnFillBarcodesFromCode');
-    if (fillBarcodesBtn) fillBarcodesBtn.disabled = locked;
-    const clearBarcodesBtn = document.getElementById('btnClearAllBarcodes');
-    if (clearBarcodesBtn) clearBarcodesBtn.disabled = locked;
     const delBtn = document.getElementById('btnDeleteWarehouse');
     if (delBtn) delBtn.disabled = locked;
     // Inventory tab isn't a split-editor form — Export is read-only and
@@ -2394,52 +2391,14 @@
     }
   });
 
-  // ---------------- Location Barcodes (part of Tab 7: Inventory) ----------------
-  // A barcode identifies the physical LOCATION (a decal on the rack), not
-  // whatever's currently stored there — so, unlike the occupancy table
-  // above, this lists every location whether occupied or not.
-  function renderLocationBarcodesTable() {
-    const tbody = document.querySelector('#locationBarcodesTable tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    store.listLocations().forEach((loc) => {
-      const tr = document.createElement('tr');
-      const barcode = store.getLocationBarcode(loc.code);
-      tr.innerHTML = `
-        <td>${escapeHtml(loc.code)}</td>
-        <td>${escapeHtml(loc.rackName || '')}</td>
-        <td>${escapeHtml(loc.bayLabel || '')}</td>
-        <td>${loc.levelNumber ?? ''}</td>
-        <td>${escapeHtml(loc.locationLabel || '')}</td>
-        <td><input type="text" class="barcode-input" data-code="${escapeHtml(loc.code)}" value="${escapeHtml(barcode)}" placeholder="—" /></td>
-        <td><button class="icon-btn" data-act="usecode" data-code="${escapeHtml(loc.code)}" title="Use location code as barcode">↺</button></td>`;
-      tbody.appendChild(tr);
-    });
-    tbody.querySelectorAll('.barcode-input').forEach((input) => {
-      input.addEventListener('change', () => {
-        store.setLocationBarcode(input.dataset.code, input.value);
-      });
-    });
-    tbody.querySelectorAll('[data-act="usecode"]').forEach((b) => b.addEventListener('click', () => {
-      store.setLocationBarcode(b.dataset.code, b.dataset.code);
-    }));
-    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
-  }
-
-  document.getElementById('btnFillBarcodesFromCode').addEventListener('click', () => {
-    const records = store.listLocations().map((loc) => ({
-      code: loc.code,
-      barcode: store.getLocationBarcode(loc.code) || loc.code
-    }));
-    store.setLocationBarcodes(records);
-  });
-
-  document.getElementById('btnClearAllBarcodes').addEventListener('click', () => {
-    if (!store.data.locationBarcodes.length) return;
-    if (confirm('Clear all location barcodes? This does not affect inventory or racks.')) {
-      store.setLocationBarcodes([]);
-    }
-  });
+  // Location Barcodes: no longer has its own always-visible table (see
+  // index.html, Tab 7) — a barcode identifies the physical LOCATION (a
+  // decal on the rack), not whatever's currently stored there, so bulk
+  // editing now happens via the Export/Import round trip above (the xlsx
+  // has a Barcode column) instead of a standing on-screen list of mostly-
+  // empty locations. store.getLocationBarcode()/setLocationBarcode() are
+  // still used directly by the inventory table's Barcode column and by the
+  // xlsx import/export below.
 
   // ---------------- Tab 9: Items (catalog: description + photo per part number) ----------------
   const formItem = document.getElementById('formItem');
@@ -2641,7 +2600,6 @@
     renderInventoryLocationOptions();
     renderItemCatalogDatalist();
     renderInventoryTable();
-    renderLocationBarcodesTable();
     renderItemsTable();
     renderLegend();
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();

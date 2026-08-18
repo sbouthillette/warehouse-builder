@@ -614,58 +614,63 @@
         <p class="hint">Simulates a live ERP/WMS feed of what's occupying each storage location. Export the current location list, then in Excel fill in a Part Number and Quantity next to each occupied location (and an LPN, if it's palletized), and import it back. LPN is optional and controls how a location renders in the 3D view: give it an LPN and it shows up as a single palletized unit load; leave LPN blank and it shows up as loose boxes piled in the location instead. For a mixed pallet carrying more than one part number, add extra rows with the same Location Code and LPN, one row per part number — a location can hold one pallet, or any number of loose-box rows, but not both. The export also includes a Barcode column (pre-filled with the location code, or its current barcode) — edit it and re-import to bulk-update location barcodes, independent of occupancy; a blank cell clears that location's barcode. Re-export any time the rack layout changes, since a location's code depends on its rack/bay/level.</p>
         <div id="inventoryGate" class="gate-message"></div>
         <div id="inventoryUI" hidden>
-          <div class="form-actions">
-            <button type="button" id="btnExportLocations" class="btn btn-primary">Export Location List (.xlsx)</button>
-            <label class="btn btn-ghost file-btn">
-              Import Inventory (.xlsx)
-              <input type="file" id="fileImportInventory" accept=".xlsx,.xls" hidden />
-            </label>
-            <button type="button" id="btnClearInventory" class="btn btn-danger-ghost">Clear Inventory</button>
-          </div>
-
           <div id="inventorySummary" class="card summary-card"></div>
 
-          <h2 class="section-heading">Add Inventory Manually</h2>
-          <p class="hint">Quicker than the Export/Import round trip for a one-off change. LPN is optional: fill it in to add (or add another part number to) a palletized unit load — the 3D view shows a pallet; leave it blank to pile loose boxes into the location instead — the 3D view shows individual boxes. A location can hold one pallet, or any number of loose-box entries, but not both — if it already has a pallet, you'll need to use that same LPN (to add to it) or remove the existing entry first.</p>
-          <form id="formAddInventory" class="card form-grid">
-            <label>Location Code
-              <select id="invAddLocationCode" required></select>
-            </label>
-            <label>LPN <span class="hint" style="display:inline;margin:0;">(optional — blank = loose boxes)</span>
-              <input type="text" id="invAddLpn" placeholder="Leave blank for loose boxes" />
-            </label>
-            <label>Part Number
-              <input type="text" id="invAddPartNumber" list="itemCatalogDatalist" placeholder="SKU-10023" required />
-            </label>
-            <label>Quantity
-              <input type="number" id="invAddQuantity" min="1" step="1" value="1" required />
-            </label>
-            <div class="form-actions full-row">
-              <button type="submit" class="btn btn-primary">Add to Inventory</button>
+          <!-- Center = the occupied-location inventory itself (what's actually
+               stored where), right = the actions that affect it (Export/
+               Import/Clear) and the manual add form — same split-editor
+               pattern as the Items tab, so the inventory is what's in front
+               of you rather than buried under the tools that edit it. -->
+          <div class="split-editor">
+            <div class="split-main-col">
+              <div class="table-wrap">
+                <table id="inventoryTable" class="data-table">
+                  <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Barcode</th><th>LPN</th><th>Contents</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
-            <p id="invAddError" class="access-error" hidden></p>
-          </form>
-          <datalist id="itemCatalogDatalist"></datalist>
 
-          <div class="table-wrap">
-            <table id="inventoryTable" class="data-table">
-              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Barcode</th><th>LPN</th><th>Contents</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
+            <div class="split-params-col">
+              <div class="form-actions form-actions-sticky full-row">
+                <button type="button" id="btnExportLocations" class="btn btn-primary">Export Location List (.xlsx)</button>
+                <label class="btn btn-ghost file-btn">
+                  Import Inventory (.xlsx)
+                  <input type="file" id="fileImportInventory" accept=".xlsx,.xls" hidden />
+                </label>
+                <button type="button" id="btnClearInventory" class="btn btn-danger-ghost">Clear Inventory</button>
+              </div>
+
+              <h2 class="section-heading">Add Inventory Manually</h2>
+              <p class="hint">Quicker than the Export/Import round trip for a one-off change. LPN is optional: fill it in to add (or add another part number to) a palletized unit load — the 3D view shows a pallet; leave it blank to pile loose boxes into the location instead — the 3D view shows individual boxes. A location can hold one pallet, or any number of loose-box entries, but not both — if it already has a pallet, you'll need to use that same LPN (to add to it) or remove the existing entry first.</p>
+              <form id="formAddInventory" class="card form-grid">
+                <label>Location Code
+                  <select id="invAddLocationCode" required></select>
+                </label>
+                <label>LPN <span class="hint" style="display:inline;margin:0;">(optional — blank = loose boxes)</span>
+                  <input type="text" id="invAddLpn" placeholder="Leave blank for loose boxes" />
+                </label>
+                <label>Part Number
+                  <input type="text" id="invAddPartNumber" list="itemCatalogDatalist" placeholder="SKU-10023" required />
+                </label>
+                <label>Quantity
+                  <input type="number" id="invAddQuantity" min="1" step="1" value="1" required />
+                </label>
+                <div class="form-actions full-row">
+                  <button type="submit" class="btn btn-primary">Add to Inventory</button>
+                </div>
+                <p id="invAddError" class="access-error" hidden></p>
+              </form>
+              <datalist id="itemCatalogDatalist"></datalist>
+            </div>
           </div>
 
-          <h2 class="section-heading">Location Barcodes</h2>
-          <p class="hint">Assign a scannable barcode to each storage location — independent of what's currently stored there. Use the location's own code as-is, or type a custom value. Edit one at a time below, or bulk-edit in Excel via Export/Import above (a Barcode column is included).</p>
-          <div class="form-actions">
-            <button type="button" id="btnFillBarcodesFromCode" class="btn btn-ghost">Fill Blank Barcodes with Location Code</button>
-            <button type="button" id="btnClearAllBarcodes" class="btn btn-danger-ghost">Clear All Barcodes</button>
-          </div>
-          <div class="table-wrap">
-            <table id="locationBarcodesTable" class="data-table">
-              <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Barcode</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
+          <!-- Deliberately NOT shown here: a table of every unoccupied/
+               available location (that's what the old always-visible
+               Location Barcodes table did). Barcodes are still fully
+               editable — just via the Export/Import round trip above (the
+               xlsx has a Barcode column) rather than a standing on-screen
+               list of mostly-empty locations. -->
         </div>
       </section>
 
