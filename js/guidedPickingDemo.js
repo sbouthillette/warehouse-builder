@@ -106,10 +106,26 @@
   // front of its target bay, derived from the rack's real picking-edge
   // geometry (Model.rackPickingEdge), so the route line always terminates
   // exactly where the pulsing pick highlight appears. Consecutive stops in
-  // the same aisle connect with a straight line; stops in different aisles
-  // connect with a simple 2-segment elbow (walk along the current aisle,
-  // then turn), so the path reads as something a person could actually
-  // walk instead of a diagonal cutting through rack rows.
+  // the same aisle connect with a straight line. Stops in different aisles
+  // route via a transfer corridor that sits entirely outside every rack's
+  // footprint (past whichever end of the rack rows is closer) rather than
+  // a naive diagonal — a straight elbow through the middle of the
+  // warehouse would often cut straight through an intervening rack.
+  function computeRackBoundsWorld() {
+    const racks = store.data.racks || [];
+    if (!racks.length) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    racks.forEach((r) => {
+      const fp = store.rackFootprint(r);
+      const rot = r.rotation === 90;
+      const w = rot ? fp.depthM : fp.lengthM;
+      const h = rot ? fp.lengthM : fp.depthM;
+      minX = Math.min(minX, r.x); maxX = Math.max(maxX, r.x + w);
+      minY = Math.min(minY, r.y); maxY = Math.max(maxY, r.y + h);
+    });
+    return { minX, maxX, minY, maxY };
+  }
+
   function computeStartPoint() {
     const wh = store.data.warehouse;
     const bounds = Model.polygonBounds(wh.shape);
@@ -142,12 +158,40 @@
     };
   }
 
-  function legPoints(a, b) {
-    const sameAisle = a.axis === b.axis &&
-      Math.abs(a.axis === 'h' ? a.y - b.y : a.x - b.x) < 0.05;
-    if (sameAisle) return [a, b];
-    const elbow = a.axis === 'h' ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
-    return [a, elbow, b];
+  const TRANSFER_MARGIN = 1.2; // clearance beyond the rack rows' outer edge, in metres
+
+  function legPoints(a, b, rackBounds) {
+    if (a.axis === b.axis) {
+      const same = Math.abs(a.axis === 'h' ? a.y - b.y : a.x - b.x) < 0.05;
+      if (same) return [a, b]; // same aisle — straight line stays inside it
+
+      if (!rackBounds) {
+        const elbow = a.axis === 'h' ? { x: b.x, y: a.y } : { x: a.x, y: b.y };
+        return [a, elbow, b];
+      }
+      if (a.axis === 'h') {
+        // Both points front a horizontal row at a different y — walk out to
+        // whichever end of the combined rack rows (west/east) is closer,
+        // travel the cross-aisle gap outside every rack's x-extent, then in.
+        const west = rackBounds.minX - TRANSFER_MARGIN;
+        const east = rackBounds.maxX + TRANSFER_MARGIN;
+        const avgX = (a.x + b.x) / 2;
+        const transferX = Math.abs(avgX - west) <= Math.abs(east - avgX) ? west : east;
+        return [a, { x: transferX, y: a.y }, { x: transferX, y: b.y }, b];
+      }
+      // 'v' axis — same idea, transferring north/south of every rack's y-extent.
+      const north = rackBounds.maxY + TRANSFER_MARGIN;
+      const south = rackBounds.minY - TRANSFER_MARGIN;
+      const avgY = (a.y + b.y) / 2;
+      const transferY = Math.abs(avgY - south) <= Math.abs(north - avgY) ? south : north;
+      return [a, { x: a.x, y: transferY }, { x: b.x, y: transferY }, b];
+    }
+    // Mixed axis (rare — racks with different picking-side orientations):
+    // route via a single corner point guaranteed to sit outside every
+    // rack's footprint, so at least the transfer itself can't clip a rack.
+    if (!rackBounds) return [a, { x: b.x, y: a.y }, b];
+    const corner = { x: rackBounds.minX - TRANSFER_MARGIN, y: rackBounds.minY - TRANSFER_MARGIN };
+    return [a, corner, b];
   }
 
   function pathLength(points) {
@@ -159,12 +203,13 @@
   }
 
   function buildRoute(taskList) {
+    const rackBounds = computeRackBoundsWorld();
     let prev = computeStartPoint();
     const legs = [];
     taskList.forEach((t, i) => {
       const stand = standPointForTask(t);
       const dest = stand || prev;
-      const pts = legPoints(prev, dest);
+      const pts = legPoints(prev, dest, rackBounds);
       legs.push({ taskIndex: i, points: pts, distanceM: pathLength(pts) });
       prev = dest;
     });
@@ -175,6 +220,54 @@
     const pts = [];
     (route.legs || []).forEach((leg) => leg.points.forEach((p) => pts.push(p)));
     return pts;
+  }
+
+  function totalRouteDistance(route) {
+    return (route.legs || []).reduce((sum, leg) => sum + (leg.distanceM || 0), 0);
+  }
+
+  // ---------------- Mini route preview (drawn directly on the phone) ----------------
+  // A compact inline SVG rendering of the same route data, scaled to its own
+  // small viewBox — shown on the "My Picking Tasks" screen so the picker
+  // sees the planned path before committing to Start Picking, not just
+  // after. Numbered stops match task order; the live 2D plan alongside the
+  // phone shows the same route at full warehouse scale.
+  function miniRouteMapSvg(route) {
+    if (!route || !route.legs.length) return '';
+    const pts = allRoutePoints(route);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    pts.forEach((p) => {
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+    });
+    const pad = 1.5;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const w = Math.max(0.5, maxX - minX), h = Math.max(0.5, maxY - minY);
+    const VBW = 300, VBH = 130;
+    const scale = Math.min(VBW / w, VBH / h);
+    const offX = (VBW - w * scale) / 2, offY = (VBH - h * scale) / 2;
+    const toSvg = (p) => ({
+      sx: offX + (p.x - minX) * scale,
+      sy: VBH - (offY + (p.y - minY) * scale) // flip Y — world up = screen up
+    });
+
+    let paths = '';
+    route.legs.forEach((leg) => {
+      const svgPts = leg.points.map(toSvg);
+      const d = svgPts.map((p, i) => (i === 0 ? 'M' : 'L') + p.sx.toFixed(1) + ',' + p.sy.toFixed(1)).join(' ');
+      paths += `<path d="${d}" fill="none" stroke="#BC5C92" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4" opacity="0.75"/>`;
+    });
+
+    let markers = '';
+    route.legs.forEach((leg, i) => {
+      const end = toSvg(leg.points[leg.points.length - 1]);
+      markers += `<circle cx="${end.sx.toFixed(1)}" cy="${end.sy.toFixed(1)}" r="8" fill="#BC5C92" stroke="#fff" stroke-width="1.5"/>` +
+        `<text x="${end.sx.toFixed(1)}" y="${(end.sy + 3.5).toFixed(1)}" font-size="9" font-weight="700" fill="#fff" text-anchor="middle" font-family="sans-serif">${i + 1}</text>`;
+    });
+    const start = toSvg(route.legs[0].points[0]);
+    markers += `<circle cx="${start.sx.toFixed(1)}" cy="${start.sy.toFixed(1)}" r="5" fill="#1a1a18" stroke="#fff" stroke-width="1.5"/>`;
+
+    return `<svg viewBox="0 0 ${VBW} ${VBH}" class="picker-route-preview-svg" preserveAspectRatio="xMidYMid meet">${paths}${markers}</svg>`;
   }
 
   // ---------------- Live 2D plan panel (separate, minimal-mode PlanView instance) ----------------
@@ -191,10 +284,6 @@
       pickHighlight: { rackId: t.rackId, bayIndex: t.bayIndex, phase: pulsePhase },
       pickRoute: currentRoute ? { legs: currentRoute.legs, activeLegIndex: taskIndex, phase: pulsePhase } : null
     });
-  }
-  function clearPlanOverlay() {
-    if (!planView) return;
-    planView.render({ pickHighlight: null, pickRoute: null });
   }
   function startPulseLoop() {
     stopPulseLoop();
@@ -230,14 +319,20 @@
   function renderIntro() {
     demoPhase = 'intro';
     stopPulseLoop();
-    clearPlanOverlay();
     setScreenMode('light');
+    const dist = currentRoute ? Math.round(totalRouteDistance(currentRoute)) : null;
+    const routePreviewHtml = currentRoute ? `
+      <div class="picker-route-preview">
+        <div class="picker-route-preview-label">Planned route · ${tasks.length} stop${tasks.length === 1 ? '' : 's'}${dist != null ? ` · ~${dist}m` : ''}</div>
+        ${miniRouteMapSvg(currentRoute)}
+      </div>` : '';
     pickerScreenEl.innerHTML = `
       <div class="picker-header">
         <p class="picker-subtitle">Today</p>
         <h3 class="picker-title">My Picking Tasks</h3>
       </div>
       <div class="picker-screen-scroll">
+        ${routePreviewHtml}
         <div class="picker-task-list">${tasks.map(taskCardHtml).join('')}</div>
       </div>
       <div class="picker-cta-wrap">
@@ -312,12 +407,12 @@
 
   function startPicking() {
     demoStartedAt = Date.now();
-    currentRoute = buildRoute(tasks);
+    // currentRoute is already computed (built alongside the task list, so
+    // it can be previewed on the phone and the plan before Start is even
+    // clicked) — just switch the plan's active leg from "preview" (-1) to
+    // the first task.
     renderGenerating();
-    // Zoom the plan to just the planned route (not the whole warehouse) and
-    // show it in full right away, so "Generating your route…" pays off with
-    // an actual path rather than a blank map.
-    if (planView) {
+    if (planView && currentRoute) {
       planView.fitToPoints(allRoutePoints(currentRoute), 2.5, {
         pickRoute: { legs: currentRoute.legs, activeLegIndex: 0, phase: pulsePhase },
         pickHighlight: null
@@ -346,22 +441,37 @@
     }, 650);
   }
 
-  function restartDemo() {
+  // Builds the task list + route together, and — if the plan view exists —
+  // fits it to the route and shows the full path in "preview" state
+  // (activeLegIndex -1, so every leg renders in the same muted "upcoming"
+  // style — nothing is "active" or "done" yet since picking hasn't
+  // started). Shared by openDemo and restartDemo so both land on the same
+  // "here's your planned route" view before Start Picking is clicked.
+  function loadTasksAndPreviewRoute() {
     tasks = buildTaskList();
-    currentRoute = null;
+    currentRoute = tasks.length ? buildRoute(tasks) : null;
     taskIndex = 0;
     demoStartedAt = null;
-    if (planView) planView.resetView();
+    if (planView && currentRoute) {
+      planView.fitToPoints(allRoutePoints(currentRoute), 2.5, {
+        pickRoute: { legs: currentRoute.legs, activeLegIndex: -1, phase: 0 },
+        pickHighlight: null
+      });
+    } else if (planView) {
+      planView.resetView();
+    }
+  }
+
+  function restartDemo() {
+    loadTasksAndPreviewRoute();
     renderIntro();
   }
 
   // ---------------- Open / close ----------------
   function openDemo() {
-    tasks = buildTaskList();
-    currentRoute = null;
-    taskIndex = 0;
-    demoStartedAt = null;
     modal.hidden = false;
+    ensurePlanView();
+    loadTasksAndPreviewRoute();
     if (!tasks.length) {
       emptyEl.classList.add('show');
       bodyEl.style.display = 'none';
@@ -369,8 +479,6 @@
     }
     emptyEl.classList.remove('show');
     bodyEl.style.display = '';
-    ensurePlanView();
-    if (planView) planView.resetView();
     renderIntro();
   }
 
@@ -383,4 +491,9 @@
   if (closeBtn) closeBtn.addEventListener('click', closeDemo);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeDemo(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closeDemo(); });
+
+  // Debug/test hook only — not used by the demo itself. Lets an external
+  // script inspect the current route without needing its own copy of the
+  // routing math.
+  window.__guidedPickingDebug = { getRoute: () => currentRoute, getTasks: () => tasks };
 })();
