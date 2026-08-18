@@ -345,6 +345,11 @@ h2 {
   color: var(--ink);
 }
 .hint { color: var(--ink-secondary); font-size: 14px; line-height: 1.6; margin: 0 0 var(--sp-4); max-width: 720px; }
+/* Opt-out of the 720px cap above for a specific long-copy intro paragraph
+   (currently just the Inventory tab's) — lets it use the full content
+   width instead of wrapping into a tall, narrow column that pushes
+   everything below it further down the page. */
+.hint-full-width { max-width: none; }
 
 /* Secondary heading for a sub-section within a tab (e.g. "Location
    Barcodes" under the Inventory tab) — same family as h2, smaller, with
