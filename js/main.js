@@ -7,6 +7,7 @@
   let editingDoorId = null;
   let editingBayId = null;
   let editingRackId = null;
+  let editingLocationTypeId = null;
 
   // Standard rack/door colors, shared by the 2D plan, 3D view, and table swatches.
   const DOOR_COLORS = { garage: '#7C8892', regular: '#8B5E34' };
@@ -562,13 +563,20 @@
     document.querySelectorAll(
       '#tab-warehouse .split-params-col, #tab-zones .split-params-col, ' +
       '#tab-doors .split-params-col, #tab-bays .split-params-col, #tab-racks .split-params-col, ' +
-      '#tab-items .split-params-col'
+      '#tab-items .split-params-col, #tab-locations .split-params-col'
     ).forEach((col) => {
       col.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = locked; });
     });
     document.querySelectorAll(
       '#zonesTable .icon-btn, #doorsTable .icon-btn, #bayTable .icon-btn, #racksTable .icon-btn, ' +
-      '#inventoryTable .icon-btn, #itemsTable .icon-btn'
+      '#inventoryTable .icon-btn, #itemsTable .icon-btn, #locationTypesTable .icon-btn'
+    ).forEach((el) => { el.disabled = locked; });
+    // Locations table lives in .split-main-col (not .split-params-col, so
+    // not covered by the blanket sweep above) but its per-row barcode/type/
+    // status/function inputs still need to lock.
+    document.querySelectorAll(
+      '#locationsTable .location-barcode-input, #locationsTable .location-type-select, ' +
+      '#locationsTable .location-status-select, #locationsTable .function-toggles input'
     ).forEach((el) => { el.disabled = locked; });
     const delBtn = document.getElementById('btnDeleteWarehouse');
     if (delBtn) delBtn.disabled = locked;
@@ -2156,7 +2164,10 @@
   // the LPN-present-vs-blank distinction store.addInventoryLine() enforces,
   // so it's obvious up front whether picking that location means "add
   // another part number to the pallet already there" (needs its LPN) or
-  // "pile on another box" (leave LPN blank), or that it's blocked outright.
+  // "pile on another box" (leave LPN blank). A location set to Blocked
+  // status (Locations tab) shows up disabled, with the reason in its
+  // label, rather than being silently omitted — omitting it would make an
+  // otherwise-valid location code look like it doesn't exist.
   function renderInventoryLocationOptions() {
     const select = document.getElementById('invAddLocationCode');
     if (!select) return;
@@ -2167,7 +2178,10 @@
       const opt = document.createElement('option');
       opt.value = loc.code;
       const occ = occupiedByCode.get(loc.code);
-      opt.textContent = occ ? `${loc.code} (${occ.lpn ? `pallet ${occ.lpn}` : 'boxes'})` : loc.code;
+      const blocked = store.isLocationBlocked(loc.code);
+      const occLabel = occ ? ` (${occ.lpn ? `pallet ${occ.lpn}` : 'boxes'})` : '';
+      opt.textContent = blocked ? `${loc.code} — BLOCKED` : `${loc.code}${occLabel}`;
+      opt.disabled = blocked;
       select.appendChild(opt);
     });
     if (current && [...select.options].some((o) => o.value === current)) select.value = current;
@@ -2368,12 +2382,20 @@
 
         const duplicateLpns = [...lpnLocations.entries()].filter(([, codes]) => codes.size > 1).length;
 
-        store.setInventory(matched);
-        let msg = `Imported ${matched.length} occupied location(s).`;
+        // Blocked locations (Locations tab) can't receive inventory through
+        // this import path either — not just the manual Add form — so a
+        // location someone deliberately blocked doesn't quietly get stock
+        // the next time an unrelated import runs.
+        const blockedRows = matched.filter((row) => store.isLocationBlocked(row.code));
+        const importable = matched.filter((row) => !store.isLocationBlocked(row.code));
+
+        store.setInventory(importable);
+        let msg = `Imported ${importable.length} occupied location(s).`;
         if (unmatchedRows) msg += ` ${unmatchedRows} row(s) had a location code that doesn't match the current model (renamed rack? changed bay count?) and were skipped — try re-exporting the location list.`;
         if (mismatchedLpnGroups) msg += ` ${mismatchedLpnGroups} location(s) had rows with different LPN values for the same location — used the first one found for each.`;
         if (boxesOnlyCount) msg += ` ${boxesOnlyCount} location(s) had no LPN filled in — imported as loose boxes rather than a pallet.`;
         if (duplicateLpns) msg += ` Warning: ${duplicateLpns} LPN(s) appear at more than one location — an LPN should normally be a single physical unit load in one place.`;
+        if (blockedRows.length) msg += ` ${blockedRows.length} location(s) were skipped because they're set to Blocked status (Locations tab).`;
         if (barcodeChanges) msg += ` Updated barcodes for ${barcodeChanges} location(s).`;
         alert(msg);
       } catch (err) {
@@ -2523,6 +2545,128 @@
     }));
   }
 
+  // ---------------- Tab 10: Locations (type/functions/status/barcode master data, per location) ----------------
+  function renderLocationsGate() {
+    const hasRacks = store.data.racks.length > 0;
+    document.getElementById('locationsGate').classList.toggle('show', !hasRacks);
+    document.getElementById('locationsGate').textContent = 'Add at least one rack (Tab 5) before configuring locations.';
+    document.getElementById('locationsUI').hidden = !hasRacks;
+  }
+
+  function renderLocationsTable() {
+    const tbody = document.querySelector('#locationsTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const types = store.data.locationTypes || [];
+    const typeOptions = (selectedId) => {
+      const opts = ['<option value="">—</option>']
+        .concat(types.map((t) => `<option value="${escapeHtml(t.id)}" ${t.id === selectedId ? 'selected' : ''}>${escapeHtml(t.name)}</option>`));
+      return opts.join('');
+    };
+    const statusOptions = (selected) => Model.LOCATION_STATUSES.map((s) =>
+      `<option value="${s}" ${s === selected ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+    ).join('');
+    const functionToggles = (code, fns) => Model.LOCATION_FUNCTIONS.map((f) => `
+      <label><input type="checkbox" data-code="${escapeHtml(code)}" data-fn="${f.key}" ${fns[f.key] ? 'checked' : ''} /> ${escapeHtml(f.label)}</label>
+    `).join('');
+
+    store.listLocations().forEach((loc) => {
+      const attrs = store.getLocationAttributes(loc.code);
+      const barcode = store.getLocationBarcode(loc.code);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(loc.code)}</td>
+        <td>${escapeHtml(loc.rackName || '')}</td>
+        <td>${escapeHtml(loc.bayLabel || '')}</td>
+        <td>${loc.levelNumber ?? ''}</td>
+        <td>${escapeHtml(loc.locationLabel || '')}</td>
+        <td><input type="text" class="location-barcode-input" data-code="${escapeHtml(loc.code)}" value="${escapeHtml(barcode)}" placeholder="—" /></td>
+        <td><select class="locations-inline-select location-type-select" data-code="${escapeHtml(loc.code)}">${typeOptions(attrs.typeId)}</select></td>
+        <td><select class="locations-inline-select location-status-select ${attrs.status === 'blocked' ? 'locations-status-blocked' : ''}" data-code="${escapeHtml(loc.code)}">${statusOptions(attrs.status)}</select></td>
+        <td><div class="function-toggles">${functionToggles(loc.code, attrs.functions)}</div></td>`;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('.location-barcode-input').forEach((input) => {
+      input.addEventListener('change', () => {
+        store.setLocationBarcode(input.dataset.code, input.value);
+      });
+    });
+    tbody.querySelectorAll('.location-type-select').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        store.setLocationAttributes(sel.dataset.code, { typeId: sel.value || null });
+      });
+    });
+    tbody.querySelectorAll('.location-status-select').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        store.setLocationAttributes(sel.dataset.code, { status: sel.value });
+      });
+    });
+    tbody.querySelectorAll('.function-toggles input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        store.setLocationAttributes(cb.dataset.code, { functions: { [cb.dataset.fn]: cb.checked } });
+      });
+    });
+    applyLockUI(); // rebuilt rows above start out enabled — re-apply if locked
+  }
+
+  // ---------------- Location Types (managed catalog, part of Tab 10) ----------------
+  const formLocationType = document.getElementById('formLocationType');
+  const locationTypeNameInput = document.getElementById('locationTypeName');
+  const btnCancelLocationTypeEdit = document.getElementById('btnCancelLocationTypeEdit');
+
+  function resetLocationTypeForm() {
+    editingLocationTypeId = null;
+    formLocationType.reset();
+    formLocationType.querySelector('button[type=submit]').textContent = 'Add Type';
+    btnCancelLocationTypeEdit.hidden = true;
+  }
+  btnCancelLocationTypeEdit.addEventListener('click', resetLocationTypeForm);
+
+  formLocationType.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = locationTypeNameInput.value.trim();
+    if (!name) return;
+    if (editingLocationTypeId) {
+      store.updateLocationType(editingLocationTypeId, { name });
+    } else {
+      store.addLocationType({ name });
+    }
+    resetLocationTypeForm();
+  });
+
+  function renderLocationTypesTable() {
+    const tbody = document.querySelector('#locationTypesTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    (store.data.locationTypes || []).forEach((t) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(t.name)}</td>
+        <td>
+          <button class="icon-btn" data-act="edit" data-id="${escapeHtml(t.id)}" title="Edit">✎</button>
+          <button class="icon-btn" data-act="del" data-id="${escapeHtml(t.id)}" title="Delete">✕</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('[data-act="edit"]').forEach((b) => b.addEventListener('click', () => {
+      const t = (store.data.locationTypes || []).find((tt) => tt.id === b.dataset.id);
+      if (!t) return;
+      editingLocationTypeId = t.id;
+      locationTypeNameInput.value = t.name;
+      formLocationType.querySelector('button[type=submit]').textContent = 'Update Type';
+      btnCancelLocationTypeEdit.hidden = false;
+      formLocationType.scrollIntoView({ behavior: 'smooth' });
+    }));
+    tbody.querySelectorAll('[data-act="del"]').forEach((b) => b.addEventListener('click', () => {
+      const t = (store.data.locationTypes || []).find((tt) => tt.id === b.dataset.id);
+      if (!confirm(`Delete the "${t ? t.name : ''}" location type? Locations already assigned this type keep showing it as unresolved rather than losing their other settings.`)) return;
+      store.deleteLocationType(b.dataset.id);
+      if (editingLocationTypeId === b.dataset.id) resetLocationTypeForm();
+    }));
+    applyLockUI();
+  }
+
   // ---------------- Legend (2D tab) ----------------
   function renderLegend() {
     const legend = document.getElementById('planLegend');
@@ -2601,6 +2745,9 @@
     renderItemCatalogDatalist();
     renderInventoryTable();
     renderItemsTable();
+    renderLocationsGate();
+    renderLocationsTable();
+    renderLocationTypesTable();
     renderLegend();
     if (currentTab === 'plan2d' && window.Canvas2D) window.Canvas2D.render();
     if (currentTab === 'view3d' && window.ThreeView) window.ThreeView.render(store);

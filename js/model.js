@@ -123,7 +123,71 @@ function emptyProject() {
     // table, or in bulk via the same Export/Import .xlsx workflow used for
     // inventory (a Barcode column). Since it's keyed by `code`, it goes
     // stale/unmatched the same way inventory does if the model changes later.
-    locationBarcodes: []
+    locationBarcodes: [],
+    // locationTypes: [{ id, name }] — a small, user-managed catalog of
+    // location-type labels (e.g. "Bulk", "Pick Face", "Staging"), same
+    // pattern as itemCatalog: added/edited/deleted on the Locations tab,
+    // then assigned one-per-location via locationAttributes.typeId below.
+    // Deleting a type here does NOT retroactively clear it off locations
+    // that still reference it — normalizeLocationAttributes() below just
+    // stops resolving it to a name (renders as "—") — so a location's
+    // history isn't silently rewritten by an unrelated catalog edit.
+    locationTypes: [],
+    // locationAttributes: [{ code, typeId, functions: { putaway, picking,
+    //   replenishment, crossDock, cycleCount } (booleans), status }] — one
+    //   entry per LOCATION (not per LPN/item — same keying as
+    //   locationBarcodes: the physical slot, independent of what's stored
+    //   there right now). Only locations someone has actually configured
+    //   get an entry; see getLocationAttributes() below for the defaults an
+    //   unconfigured location resolves to (type none, every function off,
+    //   status 'active'). status 'blocked' is enforced, not just a label —
+    //   addInventoryLine() and the Inventory tab's Excel import both refuse
+    //   to add stock to a blocked location. Editable on the Locations tab;
+    //   goes stale/unmatched the same way inventory/locationBarcodes do if
+    //   the model changes later (renamed rack, different bay count).
+    locationAttributes: []
+  };
+}
+
+// The fixed set of toggleable operational functions a location can serve —
+// deliberately NOT a user-managed catalog like locationTypes: these are
+// standard WMS location functions (what the location is used FOR in a pick/
+// putaway workflow), not free-form labels, so keeping them fixed keeps every
+// warehouse's data comparable. A location can have any combination on at
+// once (e.g. a spot that's both a pick face AND a replenishment source).
+const LOCATION_FUNCTIONS = [
+  { key: 'putaway', label: 'Putaway' },
+  { key: 'picking', label: 'Picking' },
+  { key: 'replenishment', label: 'Replenishment' },
+  { key: 'crossDock', label: 'Cross-Dock' },
+  { key: 'cycleCount', label: 'Cycle Count' }
+];
+
+// Fixed status enum — 'blocked' is enforced (see addInventoryLine and the
+// Inventory tab's import handler), so this is intentionally NOT a
+// user-managed list the way locationTypes is: adding a new status value
+// would need matching enforcement logic anyway, so it isn't just a label.
+const LOCATION_STATUSES = ['active', 'pending', 'blocked'];
+
+function defaultLocationFunctions() {
+  const out = {};
+  LOCATION_FUNCTIONS.forEach((f) => { out[f.key] = false; });
+  return out;
+}
+
+// Resolves a location's configured attributes, or the defaults for one
+// nobody has touched yet (no type, every function off, status 'active') —
+// so callers never have to null-check "has this location been configured."
+function normalizeLocationAttributes(a) {
+  const functions = defaultLocationFunctions();
+  if (a && a.functions) {
+    LOCATION_FUNCTIONS.forEach((f) => { functions[f.key] = !!a.functions[f.key]; });
+  }
+  return {
+    code: a ? a.code : undefined,
+    typeId: (a && a.typeId) || null,
+    functions,
+    status: (a && LOCATION_STATUSES.includes(a.status)) ? a.status : 'active'
   };
 }
 
@@ -703,6 +767,8 @@ class Store {
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
     this.data.locationBarcodes = Array.isArray(this.data.locationBarcodes) ? this.data.locationBarcodes : [];
+    this.data.locationTypes = Array.isArray(this.data.locationTypes) ? this.data.locationTypes : [];
+    this.data.locationAttributes = Array.isArray(this.data.locationAttributes) ? this.data.locationAttributes : [];
     this.setSaveState('saved');
     this.listeners.forEach((fn) => fn(this.data));
     return row;
@@ -775,6 +841,8 @@ class Store {
     this.data.inventory = Array.isArray(this.data.inventory) ? this.data.inventory : [];
     this.data.itemCatalog = Array.isArray(this.data.itemCatalog) ? this.data.itemCatalog : [];
     this.data.locationBarcodes = Array.isArray(this.data.locationBarcodes) ? this.data.locationBarcodes : [];
+    this.data.locationTypes = Array.isArray(this.data.locationTypes) ? this.data.locationTypes : [];
+    this.data.locationAttributes = Array.isArray(this.data.locationAttributes) ? this.data.locationAttributes : [];
     this.notify();
   }
 
@@ -1156,6 +1224,9 @@ class Store {
   addInventoryLine(loc, { lpn, partNumber, quantity } = {}) {
     if (this.isLocked()) return { ok: false, error: 'This warehouse is locked.' };
     if (!loc || !loc.code) return { ok: false, error: 'Pick a location.' };
+    if (this.isLocationBlocked(loc.code)) {
+      return { ok: false, error: `${loc.code} is set to Blocked status (Locations tab) and can't receive inventory until that's changed.` };
+    }
     const pn = String(partNumber || '').trim();
     if (!pn) return { ok: false, error: 'Enter a part number.' };
     const qty = Math.max(1, Number(quantity) || 1);
@@ -1263,6 +1334,88 @@ class Store {
     const found = (this.data.locationBarcodes || []).find((b) => b.code === code);
     return found ? found.barcode : '';
   }
+
+  // ---- Location Types (managed catalog — see emptyProject's comment) -----
+  addLocationType({ name } = {}) {
+    if (this.isLocked()) return null;
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return null;
+    if (!Array.isArray(this.data.locationTypes)) this.data.locationTypes = [];
+    const t = { id: uid('loctype'), name: trimmed };
+    this.data.locationTypes.push(t);
+    this.notify();
+    return t;
+  }
+
+  updateLocationType(id, { name } = {}) {
+    if (this.isLocked()) return;
+    const t = (this.data.locationTypes || []).find((tt) => tt.id === id);
+    if (!t) return;
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return;
+    t.name = trimmed;
+    this.notify();
+  }
+
+  // Deletes the type from the catalog only — locations still referencing
+  // this id keep their (now unresolved) typeId rather than being silently
+  // cleared; see normalizeLocationAttributes/getLocationAttributes, which
+  // just render an unresolved typeId as "no type" without touching stored
+  // data, so re-adding a type with the same name doesn't need re-tagging.
+  deleteLocationType(id) {
+    if (this.isLocked()) return;
+    this.data.locationTypes = (this.data.locationTypes || []).filter((t) => t.id !== id);
+    this.notify();
+  }
+
+  getLocationType(id) {
+    if (!id) return null;
+    return (this.data.locationTypes || []).find((t) => t.id === id) || null;
+  }
+
+  // ---- Location Attributes (type + functions + status, per location) ----
+  // Every call resolves through normalizeLocationAttributes() so callers
+  // always get a complete, well-shaped object — no null-checking whether a
+  // given location has been configured yet.
+  getLocationAttributes(code) {
+    const found = (this.data.locationAttributes || []).find((a) => a.code === code);
+    return { ...normalizeLocationAttributes(found), code };
+  }
+
+  isLocationBlocked(code) {
+    return this.getLocationAttributes(code).status === 'blocked';
+  }
+
+  // Upserts one location's attributes — `patch` may include any subset of
+  // {typeId, functions (partial — merged over existing), status}.
+  setLocationAttributes(code, patch = {}) {
+    if (this.isLocked()) return;
+    if (!code) return;
+    if (!Array.isArray(this.data.locationAttributes)) this.data.locationAttributes = [];
+    const current = this.getLocationAttributes(code); // already-normalized defaults
+    const next = normalizeLocationAttributes({
+      code,
+      typeId: 'typeId' in patch ? patch.typeId : current.typeId,
+      functions: patch.functions ? { ...current.functions, ...patch.functions } : current.functions,
+      status: 'status' in patch ? patch.status : current.status
+    });
+    const existingIndex = this.data.locationAttributes.findIndex((a) => a.code === code);
+    // An untouched/all-default record (no type, every function off, status
+    // active) is dropped rather than stored, so locationAttributes only
+    // ever holds locations someone actually configured — keeps the saved
+    // JSON from growing by one entry per location the moment the Locations
+    // tab is opened.
+    const isAllDefault = !next.typeId && next.status === 'active' &&
+      LOCATION_FUNCTIONS.every((f) => !next.functions[f.key]);
+    if (isAllDefault) {
+      if (existingIndex !== -1) this.data.locationAttributes.splice(existingIndex, 1);
+    } else if (existingIndex !== -1) {
+      this.data.locationAttributes[existingIndex] = next;
+    } else {
+      this.data.locationAttributes.push(next);
+    }
+    this.notify();
+  }
 }
 
 // Export a single shared instance
@@ -1274,5 +1427,6 @@ window.WarehouseModel = {
   pointInPolygon, rackCorners, rectFullyInsidePolygon, rackPickingEdge,
   generateLocationLabels, normalizeBayLevel, normalizeMezzanine,
   circleFullyInsidePolygon, zoneCorners, zoneFullyInsidePolygon,
-  normalizeWall, wallFullyInsidePolygon
+  normalizeWall, wallFullyInsidePolygon,
+  LOCATION_FUNCTIONS, LOCATION_STATUSES
 };

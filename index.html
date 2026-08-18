@@ -109,6 +109,7 @@
       <button class="tab-btn" data-tab="zones">7. Zones, Obstacles &amp; Walls</button>
       <button class="tab-btn" data-tab="inventory">8. Add Inventory</button>
       <button class="tab-btn" data-tab="items">9. Create Items</button>
+      <button class="tab-btn" data-tab="locations">10. Locations</button>
     </nav>
 
     <main class="content">
@@ -707,6 +708,45 @@
                 <button type="button" id="btnCancelItemEdit" class="btn btn-ghost" hidden>Cancel</button>
               </div>
             </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 10: LOCATIONS -->
+      <section id="tab-locations" class="tab-panel">
+        <h2>Locations</h2>
+        <p class="hint hint-full-width">Location master data — independent of what's currently stored there (that's the Inventory tab). Every addressable location shows up below, occupied or not: give it a Type, turn on the Functions it serves (Putaway, Picking, Replenishment, Cross-Dock, Cycle Count), set its Status, and assign a scannable Barcode. A location set to Blocked can't receive new inventory — via the Add Inventory form or the Excel import — until its status changes back.</p>
+        <div id="locationsGate" class="gate-message"></div>
+        <div id="locationsUI" hidden>
+          <div class="split-editor">
+            <div class="split-main-col">
+              <div class="table-wrap">
+                <table id="locationsTable" class="data-table">
+                  <thead><tr><th>Location Code</th><th>Rack</th><th>Bay</th><th>Level</th><th>Position</th><th>Barcode</th><th>Type</th><th>Status</th><th>Functions</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="split-params-col">
+              <h2 class="section-heading">Location Types</h2>
+              <p class="hint">Manage the type labels available in the table's Type column (e.g. Bulk, Pick Face, Staging) — add one here, then assign it per location on the left. Deleting a type here doesn't clear it off locations already using it, it just stops showing up as an option for new assignments.</p>
+              <form id="formLocationType" class="card form-grid">
+                <label>Type Name
+                  <input type="text" id="locationTypeName" placeholder="Bulk" required />
+                </label>
+                <div class="form-actions full-row">
+                  <button type="submit" class="btn btn-primary">Add Type</button>
+                  <button type="button" id="btnCancelLocationTypeEdit" class="btn btn-ghost" hidden>Cancel</button>
+                </div>
+              </form>
+              <div class="table-wrap">
+                <table id="locationTypesTable" class="data-table">
+                  <thead><tr><th>Name</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       </section>

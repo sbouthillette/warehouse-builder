@@ -439,6 +439,17 @@ h2 {
 }
 .checkbox-row input[type="checkbox"] { width: auto; accent-color: var(--secondary-2); }
 
+/* Per-location function toggles (Locations tab table cell) — compact
+   inline checkboxes rather than one table column per function, so the
+   table doesn't balloon to 13+ columns. */
+.function-toggles { display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: 220px; }
+.function-toggles label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-secondary); white-space: nowrap; cursor: pointer; }
+.function-toggles input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--primary-2); }
+/* Inline selects/inputs inside the Locations table — sized to their column
+   rather than stretching to the table cell's full width like a form field. */
+.locations-inline-select { width: auto; min-width: 110px; }
+.locations-status-blocked { color: var(--status-danger-text); font-weight: 600; }
+
 .form-actions { grid-column: 1 / -1; display: flex; gap: var(--sp-2); margin-top: var(--sp-1); flex-wrap: wrap; }
 .auto-place-actions { justify-content: flex-start; }
 
