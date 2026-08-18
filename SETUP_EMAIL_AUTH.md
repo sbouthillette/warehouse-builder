@@ -48,7 +48,7 @@ Files involved:
   actually completed (used by the Visitor Log panel).
 - `lib/authPages.js` — the shared HTML/CSS for all three screens in the
   flow (email form, code form, "you're in" confirmation), so
-  `api/auth/login.js` and `api/auth/verify.js` render identical-looking
+  `api/access/login.js` and `api/access/verify.js` render identical-looking
   cards instead of two copies of the same styling.
 - `sql/allowed_emails.sql` — creates the `allowed_emails` table and seeds
   the first admin. Run once, see step 1c below.
@@ -57,20 +57,20 @@ Files involved:
   once, see step 1d below.
 - `sql/login_events.sql` — creates the `login_events` table, one row per
   successful sign-in. Run once, see step 1d below.
-- `api/auth/login.js` — **step 1.** Shows the branded email form; on
+- `api/access/login.js` — **step 1.** Shows the branded email form; on
   submit, generates a 6-digit code, stores its hash, emails it, and shows
   the "enter your code" form. Does *not* touch `allowed_emails` or set any
   cookie — nothing is granted until the code is verified.
-- `api/auth/verify.js` — **step 2.** Checks the submitted code against the
+- `api/access/verify.js` — **step 2.** Checks the submitted code against the
   stored hash (expiry + max-attempts enforced). Only on a correct code:
   adds the address to `allowed_emails` as a non-admin guest if it's new,
   logs the visit, and sets the session cookie.
-- `api/auth/logout.js` — clears the cookie (wired to the "Sign Out" link
+- `api/access/logout.js` — clears the cookie (wired to the "Sign Out" link
   in the top bar).
 - `middleware.js` — the actual gate. Runs before every request and checks
   for a valid session cookie, redirecting to the sign-in page if there
   isn't one.
-- `api/auth/me.js` — tells the front end the signed-in email and whether
+- `api/access/me.js` — tells the front end the signed-in email and whether
   they're an admin; `js/main.js` uses this to show/hide the Export JSON /
   Import JSON controls and the Manage Access / Visitor Log buttons.
 - `api/admin/allowed-emails.js` — the API behind the Manage Access panel
@@ -249,7 +249,7 @@ allowlist and the codes) *and* on the sending mailbox working (for codes
 to actually arrive): if the database is down, `middleware.js` fails closed
 (denies everyone) unless it still has a cached copy of the allowlist from
 the last successful check; if the mailbox is misconfigured or Google
-rejects a send, `api/auth/login.js` shows an error on that submission
+rejects a send, `api/access/login.js` shows an error on that submission
 rather than silently failing.
 
 ## What this does and doesn't protect

@@ -73,7 +73,7 @@
 
   // ---------------- Admin-only UI: Export/Import JSON + Manage Access ----------------
   // Both are gated on whether the signed-in email is an admin in the
-  // allowed_emails table (see lib/allowlist.js / api/auth/me.js). Everyone
+  // allowed_emails table (see lib/allowlist.js / api/access/me.js). Everyone
   // else who's signed in can still see and edit warehouse data normally —
   // this just hides the raw project-file shortcut and the access-list
   // editor. It's a UI convenience, not a hard security boundary: the
@@ -83,7 +83,7 @@
     let isAdmin = false;
     let email = null;
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/access/me');
       if (res.ok) {
         const me = await res.json();
         isAdmin = !!me.isAdmin;

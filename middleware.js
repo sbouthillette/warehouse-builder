@@ -15,7 +15,7 @@ import { verifyToken, SESSION_COOKIE } from './lib/session.js';
 import { getAllowlist } from './lib/allowlist.js';
 
 export const config = {
-  // Everything except /api/auth/* (the login/logout routes must stay
+  // Everything except /api/access/* (the login/logout routes must stay
   // reachable to unauthenticated visitors, or nobody could ever sign in)
   // AND the handful of static assets the sign-in page itself depends on:
   // css/style.css, the logo under assets/, and the favicon under icons/.
@@ -27,7 +27,7 @@ export const config = {
   // just design tokens and branding images — so it's safe to leave public.
   // This still covers the static app shell (index.html, js/*), every other
   // /api route, and all other pages.
-  matcher: ['/((?!api/auth/|css/|assets/|icons/).*)']
+  matcher: ['/((?!api/access/|css/|assets/|icons/).*)']
 };
 
 function getCookie(request, name) {
@@ -57,7 +57,7 @@ export default async function middleware(request) {
   }
 
   const url = new URL(request.url);
-  const loginUrl = new URL('/api/auth/login', url.origin);
+  const loginUrl = new URL('/api/access/login', url.origin);
   loginUrl.searchParams.set('next', url.pathname);
   return Response.redirect(loginUrl, 302);
 }
