@@ -1,0 +1,209 @@
+// js/tour.js — first-time guided tour of the core "build a warehouse"
+// workflow. Auto-starts once per browser for a guest who's never seen it
+// (tracked via localStorage — this is a real deployed app, not a Claude
+// artifact, so localStorage is the right tool here), and is replayable by
+// admins anytime via the "Replay Tour" button (index.html topbar, wired in
+// main.js) without having to clear their browser storage.
+//
+// Deliberately NOT a persistent "Take a Tour" button for guests — that was
+// a scoping decision (auto-start only), not an oversight.
+//
+// Deliberately skips admin-only surfaces (Manage Access, Visitor Log) and
+// the deeper tabs (Doors, Zones, Create Items) — this walks the core
+// "empty room to a stocked, viewable warehouse" path in a few steps, not
+// every tab in the app.
+(function () {
+  const TOUR_SEEN_KEY = 'spatialis_tour_v1_seen';
+  const SPOTLIGHT_PAD = 8;
+
+  // Each step optionally switches to `tab` (by clicking the real nav
+  // button, so all of that tab's own render/resize logic in main.js runs
+  // normally) and optionally spotlights `target` (a CSS selector). A step
+  // with neither is a plain centered/backdrop-only caption.
+  const STEPS = [
+    {
+      title: 'Welcome to the Dynamic Spatial Model',
+      body: "This is a live, interactive digital twin builder — everything on screen is a working demo, not a mockup. Here's how a warehouse gets built, in about a minute."
+    },
+    {
+      target: '.tabs',
+      title: 'Your build path',
+      body: 'Tabs 3 through 9 walk you through building a warehouse from scratch — shell, bays, racks, doors, zones, inventory, and items. Tabs 1 and 2 show you the result in 3D and 2D as you go.'
+    },
+    {
+      tab: 'warehouse',
+      target: '#shapePreview',
+      title: '1. Warehouse Shell',
+      body: "Start by drawing the building's outer footprint — a rectangle, an L-shape, any polygon. Everything else gets built inside this outline."
+    },
+    {
+      tab: 'bays',
+      target: '#bayPreviewContainer',
+      title: '2. Bay Builder',
+      body: 'Design a single rack bay — uprights, beams, levels, load rating — as a reusable template you duplicate to build full racks.'
+    },
+    {
+      tab: 'racks',
+      target: '#racksPlanCanvas',
+      title: '3. Racks & Aisles',
+      body: 'Duplicate a bay template to form a rack, then place racks and aisles throughout the footprint you drew in step 1.'
+    },
+    {
+      tab: 'inventory',
+      target: '#inventoryUI',
+      title: '4. Add Inventory',
+      body: 'Populate rack locations with pallets and boxes — this occupancy data is what brings the 3D view to life.'
+    },
+    {
+      tab: 'view3d',
+      target: '#threeContainer',
+      title: '5. See it come alive',
+      body: 'This is the Dynamic Spatial Model — a live 3D twin of everything you just built. Click any pallet to see what it is storing.'
+    },
+    {
+      target: '#btnScheduleDemo',
+      title: "That's the core workflow",
+      body: "There's more — doors, zones, mezzanines, location barcodes — but that's the shape of it. When you're ready for the full platform, schedule a full demo."
+    }
+  ];
+
+  let stepIndex = 0;
+  let active = false;
+  let repositionHandlerBound = false;
+
+  const backdrop = document.getElementById('tourBackdrop');
+  const spotlight = document.getElementById('tourSpotlight');
+  const card = document.getElementById('tourCard');
+  const eyebrowEl = document.getElementById('tourEyebrow');
+  const titleEl = document.getElementById('tourTitle');
+  const bodyEl = document.getElementById('tourBody');
+  const dotsEl = document.getElementById('tourDots');
+  const btnSkip = document.getElementById('btnTourSkip');
+  const btnBack = document.getElementById('btnTourBack');
+  const btnNext = document.getElementById('btnTourNext');
+
+  // Some deployments/pages this script might load on won't have the tour
+  // markup (e.g. a stripped-down page) — bail quietly rather than throw.
+  if (!backdrop || !spotlight || !card || !btnNext) return;
+
+  function markSeen() {
+    try { localStorage.setItem(TOUR_SEEN_KEY, '1'); } catch (err) { /* private browsing, etc. — fine to skip */ }
+  }
+  function hasSeenTour() {
+    try { return !!localStorage.getItem(TOUR_SEEN_KEY); } catch (err) { return false; }
+  }
+
+  function resolveTarget(step) {
+    if (!step.target) return null;
+    let el = document.querySelector(step.target);
+    // Fall back to the tab button itself if the real target is missing or
+    // collapsed to zero size (e.g. a gated panel that's hidden until
+    // prerequisite data exists) — still better than spotlighting nothing.
+    const usable = (e) => e && e.getClientRects().length > 0;
+    if (!usable(el) && step.tab) el = document.querySelector(`.tab-btn[data-tab="${step.tab}"]`);
+    return usable(el) ? el : null;
+  }
+
+  function positionSpotlight(target) {
+    if (!target) {
+      spotlight.classList.remove('show');
+      backdrop.classList.add('show');
+      return;
+    }
+    backdrop.classList.remove('show');
+    const r = target.getBoundingClientRect();
+    spotlight.style.top = Math.max(0, r.top - SPOTLIGHT_PAD) + 'px';
+    spotlight.style.left = Math.max(0, r.left - SPOTLIGHT_PAD) + 'px';
+    spotlight.style.width = (r.width + SPOTLIGHT_PAD * 2) + 'px';
+    spotlight.style.height = (r.height + SPOTLIGHT_PAD * 2) + 'px';
+    spotlight.classList.add('show');
+  }
+
+  function renderStep() {
+    const step = STEPS[stepIndex];
+    if (step.tab) {
+      const tabBtn = document.querySelector(`.tab-btn[data-tab="${step.tab}"]`);
+      if (tabBtn && !tabBtn.classList.contains('active')) tabBtn.click();
+    }
+    // Give the tab switch (and any resize-dependent canvas/3D re-render it
+    // triggers) a beat to settle before measuring anything.
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const target = resolveTarget(step);
+        if (target && typeof target.scrollIntoView === 'function') {
+          target.scrollIntoView({ block: 'center', behavior: 'auto' });
+        }
+        positionSpotlight(target);
+        eyebrowEl.textContent = `Step ${stepIndex + 1} of ${STEPS.length}`;
+        titleEl.textContent = step.title;
+        bodyEl.textContent = step.body;
+        dotsEl.innerHTML = STEPS.map((_, i) => `<span class="tour-dot${i === stepIndex ? ' active' : ''}"></span>`).join('');
+        btnBack.hidden = stepIndex === 0;
+        btnNext.textContent = stepIndex === STEPS.length - 1 ? 'Finish' : 'Next';
+        card.classList.add('show');
+      }, 60);
+    });
+  }
+
+  function reposition() {
+    if (!active) return;
+    positionSpotlight(resolveTarget(STEPS[stepIndex]));
+  }
+
+  function start(opts) {
+    const force = !!(opts && opts.force);
+    if (!force && hasSeenTour()) return;
+    stepIndex = 0;
+    active = true;
+    markSeen();
+    if (!repositionHandlerBound) {
+      window.addEventListener('resize', reposition);
+      window.addEventListener('scroll', reposition, true);
+      repositionHandlerBound = true;
+    }
+    renderStep();
+  }
+
+  function end() {
+    active = false;
+    card.classList.remove('show');
+    spotlight.classList.remove('show');
+    backdrop.classList.remove('show');
+  }
+
+  btnNext.addEventListener('click', () => {
+    if (stepIndex >= STEPS.length - 1) { end(); return; }
+    stepIndex += 1;
+    renderStep();
+  });
+  btnBack.addEventListener('click', () => {
+    if (stepIndex === 0) return;
+    stepIndex -= 1;
+    renderStep();
+  });
+  btnSkip.addEventListener('click', end);
+
+  // Exposed for the admin-only "Replay Tour" button (js/main.js).
+  window.SpatialisTour = { start, end };
+
+  // Auto-start for a first-time guest, but only once the app has actually
+  // finished loading a warehouse into view (not while the "no warehouses
+  // yet" empty state is showing, and not before login/data-fetch settles).
+  // Polls briefly rather than hooking into main.js's internals directly.
+  function waitForAppReady(cb) {
+    const mainLayout = document.getElementById('mainLayout');
+    const emptyState = document.getElementById('emptyState');
+    if (!mainLayout) return;
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries += 1;
+      const ready = mainLayout.style.display !== 'none' && (!emptyState || emptyState.hidden);
+      if (ready) { clearInterval(iv); cb(); }
+      else if (tries > 150) { clearInterval(iv); } // ~30s — give up quietly, don't loop forever
+    }, 200);
+  }
+
+  if (!hasSeenTour()) {
+    waitForAppReady(() => { setTimeout(() => start(), 600); });
+  }
+})();

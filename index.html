@@ -62,6 +62,11 @@
       <a id="btnScheduleDemo" class="btn btn-primary" href="https://calendly.com/sebastien-bouthillette-spatialisos/30min" target="_blank" rel="noopener noreferrer">Schedule a Full Demo</a>
       <button id="btnManageAccess" class="btn btn-ghost" hidden>Manage Access</button>
       <button id="btnVisitorLog" class="btn btn-ghost" hidden>Visitor Log</button>
+      <!-- Admin-only: re-run the first-time guided tour (js/tour.js) without
+           having to clear localStorage. Guests never see this — the tour is
+           auto-start-only for them, by design (no persistent "Take a Tour"
+           button for guests). -->
+      <button id="btnReplayTour" class="btn btn-ghost" hidden>Replay Tour</button>
       <button id="btnExport" class="btn btn-ghost" hidden>Export JSON</button>
       <label id="importJsonLabel" class="btn btn-ghost file-btn" hidden>
         Import JSON
@@ -749,6 +754,25 @@
   </div>
 </div>
 
+<!-- Guided tour overlay (js/tour.js) — spotlight ring + fixed caption card,
+     auto-starts once for first-time guests, replayable by admins via the
+     "Replay Tour" button above. -->
+<div id="tourBackdrop"></div>
+<div id="tourSpotlight"></div>
+<div id="tourCard">
+  <div class="tour-eyebrow" id="tourEyebrow"></div>
+  <h3 class="tour-title" id="tourTitle"></h3>
+  <p class="tour-body" id="tourBody"></p>
+  <div class="tour-dots" id="tourDots"></div>
+  <div class="tour-actions">
+    <button type="button" id="btnTourSkip" class="btn btn-ghost">Skip tour</button>
+    <div class="tour-actions-right">
+      <button type="button" id="btnTourBack" class="btn btn-ghost">Back</button>
+      <button type="button" id="btnTourNext" class="btn btn-primary">Next</button>
+    </div>
+  </div>
+</div>
+
 <div id="photoLightbox" class="lightbox-overlay" hidden>
   <button type="button" id="btnClosePhotoLightbox" class="icon-btn lightbox-close" aria-label="Close">✕</button>
   <img id="photoLightboxImg" alt="" />
@@ -768,6 +792,7 @@
 <script type="module" src="js/three3d.js"></script>
 <script type="module" src="js/baypreview3d.js"></script>
 <script src="js/main.js"></script>
+<script src="js/tour.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

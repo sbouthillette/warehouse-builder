@@ -97,6 +97,7 @@
       document.getElementById('importJsonLabel').hidden = false;
       document.getElementById('btnManageAccess').hidden = false;
       document.getElementById('btnVisitorLog').hidden = false;
+      document.getElementById('btnReplayTour').hidden = false;
       // Guest-only button (see index.html) — admins get Import JSON in
       // this spot instead.
       document.getElementById('btnVisitWebsite').hidden = true;
@@ -106,6 +107,12 @@
     // asks for name/email regardless, this just saves a retype.
     window.__scheduleDemoPrefillEmail = email || null;
   })();
+
+  // Admin-only: replay the first-time guided tour (js/tour.js) on demand,
+  // rather than needing to clear localStorage to see it again.
+  document.getElementById('btnReplayTour').addEventListener('click', () => {
+    if (window.SpatialisTour) window.SpatialisTour.start({ force: true });
+  });
 
   // ---------------- "Schedule a Full Demo" (Calendly) ----------------
   // Opens a real scheduler (Calendly's popup widget) against the Spatialis
