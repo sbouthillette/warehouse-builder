@@ -926,6 +926,8 @@ h2 {
   animation: infoPanelIn var(--motion-snap);
 }
 #tourCard.show { display: block; }
+.tour-top-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.tour-top-row .tour-eyebrow { margin-bottom: 4px; }
 .tour-eyebrow {
   font-size: 11px;
   font-weight: 700;
@@ -934,6 +936,28 @@ h2 {
   color: var(--primary-2);
   margin-bottom: 4px;
 }
+.tour-mute-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--motion-fast), color var(--motion-fast), transform var(--motion-fast), opacity var(--motion-fast);
+}
+.tour-mute-btn:hover { background: var(--glass-bg-strong); color: var(--ink); }
+.tour-mute-btn:active { transform: scale(.92); }
+.tour-mute-btn.is-muted { opacity: 0.55; }
+.tour-mute-btn[hidden] { display: none; }
 .tour-title { font-weight: 700; font-size: 16px; color: var(--ink); margin: 0 0 6px; }
 .tour-body { font-size: 13.5px; line-height: 1.55; color: var(--ink-secondary); margin: 0 0 var(--sp-3); }
 .tour-dots { display: flex; gap: 6px; margin-bottom: var(--sp-3); }

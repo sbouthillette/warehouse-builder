@@ -821,7 +821,7 @@
       <h2>Guided Picking <span class="demo-badge">PREVIEW</span></h2>
       <button type="button" id="btnCloseGuidedPickingModal" class="icon-btn" title="Close">✕</button>
     </div>
-    <p class="hint">A concept preview of what a picker's handheld screen could look like — paired with the live 2D plan. The task list below is pulled from this warehouse's real inventory, but nothing here is functional: no scan, no inventory change, nothing saved.</p>
+    <p class="hint">A preview of what a picker's mobile screen looks like — paired with the live 2D plan. The task list below pulls from this warehouse's real inventory. For this demonstration, nothing here is functional: no scanning, no inventory changes, and nothing is saved.</p>
 
     <div id="guidedPickingEmpty" class="gate-message">No inventory yet in this warehouse — add some on the Inventory tab (Tab 8), then reopen this preview.</div>
 
@@ -846,7 +846,12 @@
 <div id="tourBackdrop"></div>
 <div id="tourSpotlight"></div>
 <div id="tourCard">
-  <div class="tour-eyebrow" id="tourEyebrow"></div>
+  <div class="tour-top-row">
+    <div class="tour-eyebrow" id="tourEyebrow"></div>
+    <button type="button" id="btnTourMute" class="tour-mute-btn" title="Mute narration" aria-pressed="false" aria-label="Mute tour narration">
+      <span id="tourMuteIcon" aria-hidden="true">🔊</span>
+    </button>
+  </div>
   <h3 class="tour-title" id="tourTitle"></h3>
   <p class="tour-body" id="tourBody"></p>
   <div class="tour-dots" id="tourDots"></div>

@@ -14,6 +14,7 @@
 // every tab in the app.
 (function () {
   const TOUR_SEEN_KEY = 'spatialis_tour_v1_seen';
+  const TOUR_MUTE_KEY = 'spatialis_tour_voice_muted';
   const SPOTLIGHT_PAD = 8;
 
   // Each step optionally switches to `tab` (by clicking the real nav
@@ -86,6 +87,8 @@
   const btnSkip = document.getElementById('btnTourSkip');
   const btnBack = document.getElementById('btnTourBack');
   const btnNext = document.getElementById('btnTourNext');
+  const btnMute = document.getElementById('btnTourMute');
+  const muteIconEl = document.getElementById('tourMuteIcon');
 
   // Some deployments/pages this script might load on won't have the tour
   // markup (e.g. a stripped-down page) — bail quietly rather than throw.
@@ -96,6 +99,48 @@
   }
   function hasSeenTour() {
     try { return !!localStorage.getItem(TOUR_SEEN_KEY); } catch (err) { return false; }
+  }
+
+  // ---- Voice narration (Web Speech API) ----------------------------------
+  // Fully client-side (no network dependency, no API cost) — reads each
+  // step's title + body aloud as it's shown. Some browsers (notably Safari)
+  // block the very first speechSynthesis.speak() call unless it happens
+  // inside a real user-gesture handler, so the *auto-started* first-time
+  // tour's opening step may silently fail to speak — that's expected and
+  // harmless; the mute button click itself is a user gesture, so toggling
+  // it (or clicking Next/Back) reliably unblocks speech from then on.
+  const synthAvailable = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  let muted = false;
+  try { muted = localStorage.getItem(TOUR_MUTE_KEY) === '1'; } catch (err) { /* fine to default unmuted */ }
+
+  function updateMuteButton() {
+    if (!btnMute) return;
+    btnMute.classList.toggle('is-muted', muted);
+    btnMute.setAttribute('aria-pressed', String(muted));
+    btnMute.title = muted ? 'Unmute narration' : 'Mute narration';
+    btnMute.setAttribute('aria-label', muted ? 'Unmute tour narration' : 'Mute tour narration');
+    if (muteIconEl) muteIconEl.textContent = muted ? '🔇' : '🔊';
+  }
+
+  function stopSpeech() {
+    if (synthAvailable) { try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ } }
+  }
+
+  function speakStep(step) {
+    if (!synthAvailable || muted || !step) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(`${step.title}. ${step.body}`);
+      utter.rate = 1;
+      utter.pitch = 1;
+      window.speechSynthesis.speak(utter);
+    } catch (err) { /* speech is a nice-to-have — never let it break the tour */ }
+  }
+
+  if (!synthAvailable && btnMute) {
+    btnMute.hidden = true;
+  } else {
+    updateMuteButton();
   }
 
   function resolveTarget(step) {
@@ -146,6 +191,7 @@
         btnBack.hidden = stepIndex === 0;
         btnNext.textContent = stepIndex === STEPS.length - 1 ? 'Finish' : 'Next';
         card.classList.add('show');
+        speakStep(step);
       }, 60);
     });
   }
@@ -171,6 +217,7 @@
 
   function end() {
     active = false;
+    stopSpeech();
     card.classList.remove('show');
     spotlight.classList.remove('show');
     backdrop.classList.remove('show');
@@ -187,6 +234,19 @@
     renderStep();
   });
   btnSkip.addEventListener('click', end);
+  if (btnMute) {
+    btnMute.addEventListener('click', () => {
+      muted = !muted;
+      try { localStorage.setItem(TOUR_MUTE_KEY, muted ? '1' : '0'); } catch (err) { /* fine to skip persisting */ }
+      updateMuteButton();
+      if (muted) stopSpeech();
+      // Clicking the button is a genuine user gesture, so use it to
+      // (re)start narration immediately — this is also what unblocks
+      // speechSynthesis in browsers that silently dropped the very first,
+      // auto-started utterance.
+      else if (active) speakStep(STEPS[stepIndex]);
+    });
+  }
 
   // Exposed for the admin-only "Replay Tour" button (js/main.js).
   window.SpatialisTour = { start, end };
