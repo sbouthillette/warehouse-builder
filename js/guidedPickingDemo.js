@@ -122,7 +122,7 @@
       try { localStorage.setItem(PICKER_MUTE_KEY, voiceMuted ? '1' : '0'); } catch (err) { /* fine to skip persisting */ }
       updateMuteButton();
       updateRepeatButtonVisibility();
-      if (voiceMuted && synthAvailable) { try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ } }
+      if (voiceMuted) stopSpeech();
     });
   }
 
@@ -131,24 +131,65 @@
   // listening, not read off a screen, so it needs more breathing room than
   // the tour's narration does.
   const SPEECH_RATE = 0.72;
+  // Gap between the location instruction and the item instruction — a
+  // single utterance's sentence-ending period only produces a brief beat,
+  // which isn't enough breathing room to process "walk here" before "pick
+  // this" land back to back. Speaking them as two separate, explicitly
+  // paused utterances (see speakParts) gives each half room to land.
+  const INSTRUCTION_PAUSE_MS = 700;
 
+  // Bumped on every new speak()/speakParts() call (and on stopSpeech) so a
+  // still-pending chained utterance from an older call — e.g. the auto-
+  // spoken instruction's queued second half — knows to abort instead of
+  // speaking over a newer one (mute, Repeat, or the next task's speak()).
+  let speechToken = 0;
+
+  // Speaks `parts` (a string, or an array of strings for a multi-part
+  // instruction) as a sequence of separate utterances with a real pause
+  // between each — plain punctuation-based pauses are too short and
+  // inconsistent across browsers/voices to rely on for this.
+  function speakParts(parts, pauseMs) {
+    if (!synthAvailable || voiceMuted) return;
+    const queue = (Array.isArray(parts) ? parts : [parts]).filter(Boolean);
+    if (!queue.length) return;
+    const gap = pauseMs == null ? INSTRUCTION_PAUSE_MS : pauseMs;
+    try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ }
+    const token = ++speechToken;
+    let i = 0;
+    function speakNext() {
+      if (token !== speechToken) return; // superseded by a newer speak call
+      if (i >= queue.length) return;
+      const isLast = i === queue.length - 1;
+      try {
+        const utter = new SpeechSynthesisUtterance(queue[i]);
+        utter.rate = SPEECH_RATE;
+        utter.pitch = 1;
+        if (narrationVoice) utter.voice = narrationVoice;
+        i += 1;
+        if (!isLast) {
+          utter.onend = () => { if (token === speechToken) setTimeout(speakNext, gap); };
+        }
+        window.speechSynthesis.speak(utter);
+      } catch (err) { /* speech is a nice-to-have — never let it break the demo */ }
+    }
+    speakNext();
+  }
   function speak(text) {
-    if (!synthAvailable || voiceMuted || !text) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.rate = SPEECH_RATE;
-      utter.pitch = 1;
-      if (narrationVoice) utter.voice = narrationVoice;
-      window.speechSynthesis.speak(utter);
-    } catch (err) { /* speech is a nice-to-have — never let it break the demo */ }
+    speakParts([text]);
   }
   function stopSpeech() {
+    speechToken += 1; // invalidate any in-flight paused sequence
     if (synthAvailable) { try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ } }
   }
-  function pickInstructionText(t) {
+  // Split into a "where to go" half and a "what to pick" half, spoken as
+  // two separate utterances (see speakParts) with a deliberate pause
+  // between them.
+  function pickInstructionParts(t) {
     const posPart = t.locationLabel ? `, position ${t.locationLabel}` : '';
-    return `Go to ${t.rackName}, ${t.bayLabel}, level ${t.levelNumber}${posPart}. Pick ${t.quantity} of ${t.description}.`;
+    return [
+      `Go to ${t.rackName}, ${t.bayLabel}, level ${t.levelNumber}${posPart}.`,
+      `Pick ${t.quantity} of ${t.description}.`
+    ];
   }
   // Lets the picker re-hear the current task's instruction on demand (the
   // "Repeat" button rendered on the active task screen) — useful since the
@@ -609,10 +650,10 @@
       </div>`;
     document.getElementById('pickerConfirmBtn').addEventListener('click', confirmPick);
     const repeatBtn = document.getElementById('pickerRepeatBtn');
-    if (repeatBtn) repeatBtn.addEventListener('click', () => speak(pickInstructionText(t)));
+    if (repeatBtn) repeatBtn.addEventListener('click', () => speakParts(pickInstructionParts(t)));
     updateRepeatButtonVisibility();
     startPulseLoop();
-    speak(pickInstructionText(t));
+    speakParts(pickInstructionParts(t));
   }
 
   function renderDone() {
