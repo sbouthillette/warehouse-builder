@@ -59,7 +59,7 @@
       tab: 'view3d',
       target: '#threeContainer',
       title: '5. See it come alive',
-      body: 'This is the Dynamic Spatial Model — a live 3D twin of everything you just built. Click any pallet to see what it is storing.'
+      body: 'This is the Dynamic Spatial Model — a live 3D twin of everything you just built. You can zoom in and out and orbit around the model. Click any pallet to see what it is storing and some data about the product or products contained at that location.'
     },
     {
       target: '#btnNewWarehouse',
