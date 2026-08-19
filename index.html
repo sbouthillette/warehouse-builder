@@ -819,7 +819,12 @@
   <div class="modal-card modal-card-guided-picking">
     <div class="modal-header">
       <h2>Guided Picking <span class="demo-badge">PREVIEW</span></h2>
-      <button type="button" id="btnCloseGuidedPickingModal" class="icon-btn" title="Close">✕</button>
+      <div class="modal-header-actions">
+        <button type="button" id="btnPickerMute" class="tour-mute-btn" title="Mute pick-to-voice narration" aria-pressed="false" aria-label="Mute pick-to-voice narration">
+          <span id="pickerMuteIcon" aria-hidden="true">🔊</span>
+        </button>
+        <button type="button" id="btnCloseGuidedPickingModal" class="icon-btn" title="Close">✕</button>
+      </div>
     </div>
     <p class="hint">A preview of what a picker's mobile screen looks like — paired with the live 2D plan. The task list below pulls from this warehouse's real inventory. For this demonstration, nothing here is functional: no scanning, no inventory changes, and nothing is saved.</p>
 
@@ -848,9 +853,12 @@
 <div id="tourCard">
   <div class="tour-top-row">
     <div class="tour-eyebrow" id="tourEyebrow"></div>
-    <button type="button" id="btnTourMute" class="tour-mute-btn" title="Mute narration" aria-pressed="false" aria-label="Mute tour narration">
-      <span id="tourMuteIcon" aria-hidden="true">🔊</span>
-    </button>
+    <div class="tour-top-actions">
+      <select id="tourVoiceSelect" class="tour-voice-select" title="Narration voice" aria-label="Narration voice" hidden></select>
+      <button type="button" id="btnTourMute" class="tour-mute-btn" title="Mute narration" aria-pressed="false" aria-label="Mute tour narration">
+        <span id="tourMuteIcon" aria-hidden="true">🔊</span>
+      </button>
+    </div>
   </div>
   <h3 class="tour-title" id="tourTitle"></h3>
   <p class="tour-body" id="tourBody"></p>

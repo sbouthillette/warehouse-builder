@@ -30,6 +30,8 @@
   const bodyEl = document.getElementById('guidedPickingBody');
   const pickerScreenEl = document.getElementById('pickerScreen');
   const planCanvas = document.getElementById('guidedPickingPlanCanvas');
+  const muteBtn = document.getElementById('btnPickerMute');
+  const muteIconEl = document.getElementById('pickerMuteIcon');
 
   let planView = null;
   let tasks = [];
@@ -42,6 +44,104 @@
 
   function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------------- Pick-to-voice narration (Web Speech API) ----------------
+  // Real warehouse "pick-to-voice" systems speak each pick instruction to
+  // the operator over a headset and listen for a spoken confirmation back —
+  // this demo can't listen, but speaking the instruction and a short
+  // acknowledgment on Confirm recreates the same call-and-response feel.
+  // Fully client-side; never lets a speech failure interrupt the demo.
+  //
+  // The chosen voice is intentionally shared with js/tour.js (same
+  // localStorage key) — picking a more natural-sounding voice once, from
+  // either surface, applies everywhere. Mute state is kept separate per
+  // surface, since a visitor may want the tour narrated but the picking
+  // demo silent (or vice versa) depending on what they're showing someone.
+  const PICKER_MUTE_KEY = 'spatialis_picker_voice_muted';
+  const SHARED_VOICE_KEY = 'spatialis_narration_voice_uri';
+  const synthAvailable = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  let voiceMuted = false;
+  try { voiceMuted = localStorage.getItem(PICKER_MUTE_KEY) === '1'; } catch (err) { /* fine to default unmuted */ }
+  let narrationVoice = null;
+
+  const PREFERRED_VOICE_HINTS = [
+    'natural', 'neural', 'premium', 'enhanced', 'siri',
+    'google us english', 'google uk english',
+    'samantha', 'ava', 'allison', 'susan', 'nicky', 'zoe', 'evan', 'tom',
+    'aria', 'jenny', 'guy', 'sonia', 'ryan', 'libby'
+  ];
+  const NOVELTY_VOICE_HINTS = [
+    'bad news', 'bahh', 'bells', 'boing', 'bubbles', 'cellos', 'deranged',
+    'good news', 'hysterical', 'organ', 'pipe organ', 'trinoids', 'whisper',
+    'zarvox', 'albert', 'fred', 'jester', 'wobble', 'eloquence', 'junior',
+    'kathy', 'ralph', 'grandma', 'grandpa', 'rocko', 'shelley'
+  ];
+  function scoreVoice(v) {
+    const name = (v.name || '').toLowerCase();
+    let score = 0;
+    if (/^en(-|_|$)/i.test(v.lang || '')) score += 5;
+    if (PREFERRED_VOICE_HINTS.some((h) => name.includes(h))) score += 10;
+    if (NOVELTY_VOICE_HINTS.some((h) => name.includes(h))) score -= 20;
+    if (v.localService === false) score += 1;
+    return score;
+  }
+  function refreshNarrationVoice() {
+    if (!synthAvailable) return;
+    let voices = [];
+    try { voices = window.speechSynthesis.getVoices() || []; } catch (err) { voices = []; }
+    if (!voices.length) return;
+    const english = voices.filter((v) => /^en/i.test(v.lang || ''));
+    const pool = (english.length ? english : voices).slice();
+    let savedURI = null;
+    try { savedURI = localStorage.getItem(SHARED_VOICE_KEY) || null; } catch (err) { /* fine to skip */ }
+    const remembered = savedURI && pool.find((v) => v.voiceURI === savedURI);
+    narrationVoice = remembered || pool.sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
+  }
+  if (synthAvailable) {
+    refreshNarrationVoice();
+    try { window.speechSynthesis.addEventListener('voiceschanged', refreshNarrationVoice); } catch (err) { /* older Safari lacks this */ }
+  }
+
+  function updateMuteButton() {
+    if (!muteBtn) return;
+    muteBtn.classList.toggle('is-muted', voiceMuted);
+    muteBtn.setAttribute('aria-pressed', String(voiceMuted));
+    muteBtn.title = voiceMuted ? 'Unmute pick-to-voice narration' : 'Mute pick-to-voice narration';
+    muteBtn.setAttribute('aria-label', muteBtn.title);
+    if (muteIconEl) muteIconEl.textContent = voiceMuted ? '🔇' : '🔊';
+  }
+  if (!synthAvailable && muteBtn) {
+    muteBtn.hidden = true;
+  } else {
+    updateMuteButton();
+  }
+  if (muteBtn) {
+    muteBtn.addEventListener('click', () => {
+      voiceMuted = !voiceMuted;
+      try { localStorage.setItem(PICKER_MUTE_KEY, voiceMuted ? '1' : '0'); } catch (err) { /* fine to skip persisting */ }
+      updateMuteButton();
+      if (voiceMuted && synthAvailable) { try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ } }
+    });
+  }
+
+  function speak(text) {
+    if (!synthAvailable || voiceMuted || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1;
+      utter.pitch = 1;
+      if (narrationVoice) utter.voice = narrationVoice;
+      window.speechSynthesis.speak(utter);
+    } catch (err) { /* speech is a nice-to-have — never let it break the demo */ }
+  }
+  function stopSpeech() {
+    if (synthAvailable) { try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ } }
+  }
+  function pickInstructionText(t) {
+    const posPart = t.locationLabel ? `, position ${t.locationLabel}` : '';
+    return `Go to ${t.rackName}, ${t.bayLabel}, level ${t.levelNumber}${posPart}. Pick ${t.quantity} of ${t.description}.`;
   }
 
   // ---------------- Product thumbnails ----------------
@@ -428,6 +528,7 @@
   function renderIntro() {
     demoPhase = 'intro';
     stopPulseLoop();
+    stopSpeech();
     setScreenMode('light');
     const dist = currentRoute ? Math.round(totalRouteDistance(currentRoute)) : null;
     const routePreviewHtml = currentRoute ? `
@@ -490,6 +591,7 @@
       </div>`;
     document.getElementById('pickerConfirmBtn').addEventListener('click', confirmPick);
     startPulseLoop();
+    speak(pickInstructionText(t));
   }
 
   function renderDone() {
@@ -513,6 +615,7 @@
         </div>
       </div>`;
     document.getElementById('pickerRestartBtn').addEventListener('click', restartDemo);
+    speak('All picks complete. Nice work.');
   }
 
   function startPicking() {
@@ -541,6 +644,7 @@
       btn.classList.add('picker-cta-picked');
       btn.textContent = '✓ Picked';
     }
+    speak('Picked.');
     setTimeout(() => {
       if (modal.hidden) return;
       if (taskIndex < tasks.length - 1) {
@@ -573,6 +677,7 @@
   }
 
   function restartDemo() {
+    stopSpeech();
     loadTasksAndPreviewRoute();
     renderIntro();
   }
@@ -595,6 +700,7 @@
   function closeDemo() {
     modal.hidden = true;
     stopPulseLoop();
+    stopSpeech();
   }
 
   openBtn.addEventListener('click', openDemo);

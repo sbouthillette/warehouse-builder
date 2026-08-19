@@ -936,6 +936,20 @@ h2 {
   color: var(--primary-2);
   margin-bottom: 4px;
 }
+.tour-top-actions { display: flex; align-items: center; gap: 6px; flex: none; margin-bottom: 4px; }
+.tour-voice-select {
+  flex: none;
+  max-width: 130px;
+  height: 26px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 11px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+.tour-voice-select[hidden] { display: none; }
 .tour-mute-btn {
   flex: none;
   display: inline-flex;
@@ -943,7 +957,6 @@ h2 {
   justify-content: center;
   width: 26px;
   height: 26px;
-  margin-bottom: 4px;
   border-radius: 50%;
   border: 1px solid var(--glass-border);
   background: transparent;
@@ -1004,6 +1017,7 @@ h2 {
   font-family: 'Barlow Condensed', sans-serif;
   color: var(--ink);
 }
+.modal-header-actions { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 /* A short confirm-style dialog (e.g. Request a Full Demo) doesn't need the
    default 560px width meant for tables/forms. */
 .modal-card-narrow { max-width: 420px; }

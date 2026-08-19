@@ -89,6 +89,7 @@
   const btnNext = document.getElementById('btnTourNext');
   const btnMute = document.getElementById('btnTourMute');
   const muteIconEl = document.getElementById('tourMuteIcon');
+  const voiceSelect = document.getElementById('tourVoiceSelect');
 
   // Some deployments/pages this script might load on won't have the tour
   // markup (e.g. a stripped-down page) — bail quietly rather than throw.
@@ -133,6 +134,7 @@
       const utter = new SpeechSynthesisUtterance(`${step.title}. ${step.body}`);
       utter.rate = 1;
       utter.pitch = 1;
+      if (selectedVoice) utter.voice = selectedVoice;
       window.speechSynthesis.speak(utter);
     } catch (err) { /* speech is a nice-to-have — never let it break the tour */ }
   }
@@ -141,6 +143,90 @@
     btnMute.hidden = true;
   } else {
     updateMuteButton();
+  }
+
+  // ---- Voice selection ----------------------------------------------------
+  // The browser's silent default voice (whatever getVoices()[0] happens to
+  // be) is often the flattest, most "robotic" one available — real, more
+  // natural-sounding voices (OS-bundled premium/enhanced voices, or
+  // Chrome's remote "Google ..." voices) usually exist on the same device
+  // but just aren't picked automatically. We rank the available voices and
+  // default to the best-sounding one, while still letting the user pick a
+  // different one from the dropdown if they prefer.
+  //
+  // This key is intentionally shared with js/guidedPickingDemo.js's
+  // pick-to-voice narration (both files write/read the same localStorage
+  // entry) — pick a voice here once and the picking demo's narration uses
+  // it too, rather than each surface needing its own picker.
+  const TOUR_VOICE_KEY = 'spatialis_narration_voice_uri';
+  let voices = [];
+  let selectedVoice = null;
+  let selectedVoiceURI = null;
+  try { selectedVoiceURI = localStorage.getItem(TOUR_VOICE_KEY) || null; } catch (err) { /* fine to skip */ }
+
+  const PREFERRED_VOICE_HINTS = [
+    'natural', 'neural', 'premium', 'enhanced', 'siri',
+    'google us english', 'google uk english',
+    'samantha', 'ava', 'allison', 'susan', 'nicky', 'zoe', 'evan', 'tom',
+    'aria', 'jenny', 'guy', 'sonia', 'ryan', 'libby'
+  ];
+  const NOVELTY_VOICE_HINTS = [
+    'bad news', 'bahh', 'bells', 'boing', 'bubbles', 'cellos', 'deranged',
+    'good news', 'hysterical', 'organ', 'pipe organ', 'trinoids', 'whisper',
+    'zarvox', 'albert', 'fred', 'jester', 'wobble', 'eloquence', 'junior',
+    'kathy', 'ralph', 'grandma', 'grandpa', 'rocko', 'shelley'
+  ];
+
+  function scoreVoice(v) {
+    const name = (v.name || '').toLowerCase();
+    let score = 0;
+    if (/^en(-|_|$)/i.test(v.lang || '')) score += 5;
+    if (PREFERRED_VOICE_HINTS.some((h) => name.includes(h))) score += 10;
+    if (NOVELTY_VOICE_HINTS.some((h) => name.includes(h))) score -= 20;
+    if (v.localService === false) score += 1; // remote/cloud voices tend to sound less robotic
+    return score;
+  }
+
+  function refreshVoices() {
+    if (!synthAvailable || !voiceSelect) return;
+    try { voices = window.speechSynthesis.getVoices() || []; } catch (err) { voices = []; }
+    const english = voices.filter((v) => /^en/i.test(v.lang || ''));
+    const pool = (english.length ? english : voices).slice();
+    if (pool.length <= 1) { voiceSelect.hidden = true; return; }
+
+    const sorted = pool.sort((a, b) => scoreVoice(b) - scoreVoice(a));
+    voiceSelect.innerHTML = sorted
+      .map((v) => `<option value="${v.voiceURI}">${v.name}${v.lang ? ' (' + v.lang + ')' : ''}</option>`)
+      .join('');
+    voiceSelect.hidden = false;
+
+    // Prefer a previously-chosen voice if it's still available on this
+    // device/browser; otherwise fall back to the best-scored one.
+    const remembered = selectedVoiceURI && sorted.find((v) => v.voiceURI === selectedVoiceURI);
+    selectedVoice = remembered || sorted[0];
+    if (selectedVoice) voiceSelect.value = selectedVoice.voiceURI;
+  }
+
+  if (synthAvailable) {
+    refreshVoices();
+    // Most browsers (Chrome especially) load the real voice list
+    // asynchronously — the very first getVoices() call right after page
+    // load often returns []. This event fires once the full list is ready.
+    try { window.speechSynthesis.onvoiceschanged = refreshVoices; } catch (err) { /* older Safari lacks this */ }
+  }
+
+  if (voiceSelect) {
+    voiceSelect.addEventListener('change', () => {
+      const v = voices.find((x) => x.voiceURI === voiceSelect.value);
+      if (!v) return;
+      selectedVoice = v;
+      selectedVoiceURI = v.voiceURI;
+      try { localStorage.setItem(TOUR_VOICE_KEY, selectedVoiceURI); } catch (err) { /* fine to skip persisting */ }
+      // Changing the dropdown is a real user gesture, and immediately
+      // re-reading the current step is the clearest way to preview the
+      // new voice.
+      if (active && !muted) speakStep(STEPS[stepIndex]);
+    });
   }
 
   function resolveTarget(step) {
