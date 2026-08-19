@@ -53,7 +53,7 @@
       tab: 'inventory',
       target: '#formAddInventory',
       title: '4. Add Inventory',
-      body: "Pick a Location Code, then add what's stored there: a Part Number and Quantity, plus an LPN if it's a palletized unit load — leave the LPN blank to pile in loose boxes instead. This occupancy data is what brings the 3D view to life."
+      body: "For the purpose of the demo, to add inventory, pick a location, then add what's stored there: a Part Number and Quantity, plus an LPN if it's a palletized unit load — leave the LPN blank to pile in loose boxes instead. This occupancy data is what brings the 3D view to life."
     },
     {
       tab: 'view3d',
