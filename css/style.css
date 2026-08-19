@@ -1220,6 +1220,16 @@ h2 {
 /* ---- Active pick / navigation screen ---- */
 .picker-task-progress { font-size: 12px; color: rgba(255,255,255,0.6); text-align: center; padding-top: var(--sp-3); }
 .picker-leg-label { font-size: 12px; color: rgba(255,255,255,0.45); text-align: center; margin-top: 2px; }
+/* Turn-by-turn mini-map for the current leg — "like Google Maps" per-leg
+   preview, shown right on the active pick screen. */
+.picker-leg-map {
+  margin: var(--sp-2) var(--sp-4) 0;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  padding: 6px;
+}
+.picker-leg-map-svg { width: 100%; height: 78px; display: block; }
 .picker-location-big {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 34px;

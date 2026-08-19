@@ -147,21 +147,42 @@
     return { x: bounds.minX + 1.5, y: bounds.minY + 1.5 };
   }
 
+  // Finds where the picker should stand for a given bay — deliberately NOT
+  // built from Model.rackPickingEdge's p1→p2 span. That span only covers
+  // the full bay layout when the picking side's axis matches the rack's
+  // rotation (south/north on an unrotated rack, east/west on a rotated
+  // one); for the opposite pairing it's only as long as the rack's depth
+  // (~1m), so interpolating a bay fraction across it collapses every bay
+  // toward the same corner regardless of index — the route would then
+  // consistently under/overshoot the real target the further the bay was
+  // from that corner. Instead this computes the target bay's center
+  // exactly the way the pulsing pick highlight itself is positioned (see
+  // drawPickHighlight in canvas2d.js — bays subdivide along the rack's own
+  // length axis, independent of picking side), then steps out from the
+  // rack's chosen picking face by the aisle stand-off. That keeps the two
+  // always in agreement regardless of how picking side and rotation combine.
   function standPointForTask(t) {
     const rack = store.data.racks.find((r) => r.id === t.rackId);
     if (!rack) return null;
     const fp = store.rackFootprint(rack);
-    const edge = Model.rackPickingEdge({
-      x: rack.x, y: rack.y, rotation: rack.rotation,
-      lengthM: fp.lengthM, depthM: fp.depthM, pickingSide: rack.pickingSide
-    });
+    const rot = rack.rotation === 90;
+    const w = rot ? fp.depthM : fp.lengthM;
+    const h = rot ? fp.lengthM : fp.depthM;
+    const x0 = rack.x, y0 = rack.y, x1 = rack.x + w, y1 = rack.y + h;
     const bayCount = Math.max(1, rack.bayCount);
     const bayIdx = Math.max(0, Math.min(bayCount - 1, t.bayIndex || 0));
-    const frac = (bayIdx + 0.5) / bayCount;
-    const faceX = edge.p1.x + (edge.p2.x - edge.p1.x) * frac;
-    const faceY = edge.p1.y + (edge.p2.y - edge.p1.y) * frac;
+    const frac0 = bayIdx / bayCount, frac1 = (bayIdx + 1) / bayCount;
+    const bayCenterX = rot ? (x0 + x1) / 2 : x0 + w * (frac0 + frac1) / 2;
+    const bayCenterY = rot ? y0 + h * (frac0 + frac1) / 2 : (y0 + y1) / 2;
+
     const standOff = Math.max(0.8, Math.min((rack.aisleWidth || 3) / 2, 1.6));
-    return { x: faceX + edge.nx * standOff, y: faceY + edge.ny * standOff };
+    switch (rack.pickingSide) {
+      case 'north': return { x: bayCenterX, y: y1 + standOff };
+      case 'east': return { x: x1 + standOff, y: bayCenterY };
+      case 'west': return { x: x0 - standOff, y: bayCenterY };
+      case 'south':
+      default: return { x: bayCenterX, y: y0 - standOff };
+    }
   }
 
   // Liang-Barsky segment-vs-rectangle clip test, inset slightly so a point
@@ -313,6 +334,51 @@
     return `<svg viewBox="0 0 ${VBW} ${VBH}" class="picker-route-preview-svg" preserveAspectRatio="xMidYMid meet">${paths}${markers}</svg>`;
   }
 
+  // Turn-by-turn style mini-map shown on the active pick screen itself —
+  // "like Google Maps for each leg": zoomed to the CURRENT leg (not the
+  // whole route), with a white "you are here" dot at the start, a plum pin
+  // at this leg's destination, the current leg drawn bold, and the rest of
+  // the route sketched faint underneath for context.
+  function legPreviewSvg(route, activeIndex) {
+    if (!route || !route.legs[activeIndex]) return '';
+    const activeLeg = route.legs[activeIndex];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    activeLeg.points.forEach((p) => {
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+    });
+    const pad = 2;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const w = Math.max(0.5, maxX - minX), h = Math.max(0.5, maxY - minY);
+    const VBW = 300, VBH = 96;
+    const scale = Math.min(VBW / w, VBH / h);
+    const offX = (VBW - w * scale) / 2, offY = (VBH - h * scale) / 2;
+    const toSvg = (p) => ({
+      sx: offX + (p.x - minX) * scale,
+      sy: VBH - (offY + (p.y - minY) * scale)
+    });
+
+    let paths = '';
+    route.legs.forEach((leg) => {
+      const svgPts = leg.points.map(toSvg);
+      const d = svgPts.map((p, i) => (i === 0 ? 'M' : 'L') + p.sx.toFixed(1) + ',' + p.sy.toFixed(1)).join(' ');
+      const isActive = leg.taskIndex === activeIndex;
+      const isDone = leg.taskIndex < activeIndex;
+      const stroke = isActive ? '#BC5C92' : (isDone ? 'rgba(255,255,255,0.28)' : 'rgba(188,92,146,0.4)');
+      const width = isActive ? 3.5 : 2;
+      const dash = isActive ? '' : ' stroke-dasharray="3 4"';
+      paths += `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${dash}/>`;
+    });
+
+    const here = toSvg(activeLeg.points[0]);
+    const target = toSvg(activeLeg.points[activeLeg.points.length - 1]);
+    const markers =
+      `<circle cx="${here.sx.toFixed(1)}" cy="${here.sy.toFixed(1)}" r="5" fill="#fff" stroke="#1a1a18" stroke-width="1.5"/>` +
+      `<circle cx="${target.sx.toFixed(1)}" cy="${target.sy.toFixed(1)}" r="7" fill="#BC5C92" stroke="#fff" stroke-width="1.5"/>`;
+
+    return `<svg viewBox="0 0 ${VBW} ${VBH}" class="picker-leg-map-svg" preserveAspectRatio="xMidYMid meet">${paths}${markers}</svg>`;
+  }
+
   // ---------------- Live 2D plan panel (separate, minimal-mode PlanView instance) ----------------
   function ensurePlanView() {
     if (!planView && planCanvas && window.PlanView) {
@@ -408,6 +474,7 @@
     pickerScreenEl.innerHTML = `
       <div class="picker-task-progress">Task ${index + 1} of ${tasks.length}</div>
       <div class="picker-leg-label">🧭 Leg ${index + 1} of ${tasks.length}${legDist != null ? ` · ~${legDist}m walk` : ''}</div>
+      <div class="picker-leg-map">${legPreviewSvg(currentRoute, index)}</div>
       <div class="picker-location-big">${escapeHtml(t.code)}</div>
       <div class="picker-location-sub">Rack ${escapeHtml(t.rackName)} · ${escapeHtml(t.bayLabel)} · Level ${t.levelNumber} · Pos ${escapeHtml(t.locationLabel || '1')}</div>
       <div class="picker-item-card">
