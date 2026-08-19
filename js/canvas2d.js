@@ -689,7 +689,17 @@
       const frac0 = bayIndex / bayCount, frac1 = (bayIndex + 1) / bayCount;
       let bx, by, bw, bh;
       if (!rot) { bx = x + pw * frac0; by = y; bw = pw * (frac1 - frac0); bh = ph; }
-      else { by = y + ph * frac0; bx = x; bh = ph * (frac1 - frac0); bw = pw; }
+      else {
+        // Screen Y is inverted relative to world Y (worldToScreen flips it
+        // for the usual "up = north" plan convention), but `y`/`ph` here are
+        // screen-space min/max — so a naive frac0 would anchor Bay 1 at the
+        // far (high-world-Y) end instead of the origin corner. Flip the
+        // fraction to keep Bay 1 anchored at the origin dot, matching the
+        // un-rotated case, the per-bay labels in drawRacks above, and the
+        // 3D view — otherwise this highlight lands on the mirror-image bay
+        // of the one actually targeted.
+        by = y + ph * (1 - frac1); bx = x; bh = ph * (frac1 - frac0); bw = pw;
+      }
 
       const pulse = 0.5 + 0.5 * Math.sin(h.phase || 0);
       ctx.save();
