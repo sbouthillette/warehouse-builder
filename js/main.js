@@ -143,7 +143,6 @@
       document.getElementById('importJsonLabel').hidden = false;
       document.getElementById('btnManageAccess').hidden = false;
       document.getElementById('btnVisitorLog').hidden = false;
-      document.getElementById('btnReplayTour').hidden = false;
       // Guest-only button (see index.html) — admins get Import JSON in
       // this spot instead.
       document.getElementById('btnVisitWebsite').hidden = true;
@@ -154,8 +153,9 @@
     window.__scheduleDemoPrefillEmail = email || null;
   })();
 
-  // Admin-only: replay the first-time guided tour (js/tour.js) on demand,
-  // rather than needing to clear localStorage to see it again.
+  // Visible to every signed-in user: replay the first-time guided tour
+  // (js/tour.js) on demand, rather than needing to clear localStorage to
+  // see it again.
   document.getElementById('btnReplayTour').addEventListener('click', () => {
     if (window.SpatialisTour) window.SpatialisTour.start({ force: true });
   });

@@ -62,11 +62,11 @@
       <a id="btnScheduleDemo" class="btn btn-primary" href="https://calendly.com/sebastien-bouthillette-spatialisos/30min" target="_blank" rel="noopener noreferrer">Schedule a Full Demo</a>
       <button id="btnManageAccess" class="btn btn-ghost" hidden>Manage Access</button>
       <button id="btnVisitorLog" class="btn btn-ghost" hidden>Visitor Log</button>
-      <!-- Admin-only: re-run the first-time guided tour (js/tour.js) without
-           having to clear localStorage. Guests never see this — the tour is
-           auto-start-only for them, by design (no persistent "Take a Tour"
-           button for guests). -->
-      <button id="btnReplayTour" class="btn btn-ghost" hidden>Replay Tour</button>
+      <!-- Visible to every signed-in user (not gated to admins) — re-runs
+           the first-time guided tour (js/tour.js) without having to clear
+           localStorage. Anyone signed in can replay it to see the walkthrough
+           again or preview narration voice changes. -->
+      <button id="btnReplayTour" class="btn btn-ghost">Replay Tour</button>
       <button id="btnExport" class="btn btn-ghost" hidden>Export JSON</button>
       <label id="importJsonLabel" class="btn btn-ghost file-btn" hidden>
         Import JSON
