@@ -121,16 +121,23 @@
       voiceMuted = !voiceMuted;
       try { localStorage.setItem(PICKER_MUTE_KEY, voiceMuted ? '1' : '0'); } catch (err) { /* fine to skip persisting */ }
       updateMuteButton();
+      updateRepeatButtonVisibility();
       if (voiceMuted && synthAvailable) { try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ } }
     });
   }
+
+  // Deliberately slower than normal speaking pace (1.0 = default) — this is
+  // meant to be understood while the picker is walking and only half
+  // listening, not read off a screen, so it needs more breathing room than
+  // the tour's narration does.
+  const SPEECH_RATE = 0.72;
 
   function speak(text) {
     if (!synthAvailable || voiceMuted || !text) return;
     try {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(text);
-      utter.rate = 1;
+      utter.rate = SPEECH_RATE;
       utter.pitch = 1;
       if (narrationVoice) utter.voice = narrationVoice;
       window.speechSynthesis.speak(utter);
@@ -142,6 +149,14 @@
   function pickInstructionText(t) {
     const posPart = t.locationLabel ? `, position ${t.locationLabel}` : '';
     return `Go to ${t.rackName}, ${t.bayLabel}, level ${t.levelNumber}${posPart}. Pick ${t.quantity} of ${t.description}.`;
+  }
+  // Lets the picker re-hear the current task's instruction on demand (the
+  // "Repeat" button rendered on the active task screen) — useful since the
+  // instruction plays once automatically as the screen appears, which can
+  // be easy to miss if you're mid-stride or the phone was still in a pocket.
+  function updateRepeatButtonVisibility() {
+    const btn = document.getElementById('pickerRepeatBtn');
+    if (btn) btn.hidden = !synthAvailable || voiceMuted;
   }
 
   // ---------------- Product thumbnails ----------------
@@ -573,6 +588,9 @@
     const legDist = leg ? Math.max(1, Math.round(leg.distanceM)) : null;
     setScreenMode('dark');
     pickerScreenEl.innerHTML = `
+      <button type="button" id="pickerRepeatBtn" class="picker-repeat-btn" title="Repeat instruction" aria-label="Repeat instruction" hidden>
+        <span aria-hidden="true">🔁</span> Repeat
+      </button>
       <div class="picker-task-progress">Task ${index + 1} of ${tasks.length}</div>
       <div class="picker-leg-label">🧭 Leg ${index + 1} of ${tasks.length}${legDist != null ? ` · ~${legDist}m walk` : ''}</div>
       <div class="picker-leg-map">${legPreviewSvg(currentRoute, index)}</div>
@@ -590,6 +608,9 @@
         <button type="button" class="picker-cta" id="pickerConfirmBtn">Confirm Pick</button>
       </div>`;
     document.getElementById('pickerConfirmBtn').addEventListener('click', confirmPick);
+    const repeatBtn = document.getElementById('pickerRepeatBtn');
+    if (repeatBtn) repeatBtn.addEventListener('click', () => speak(pickInstructionText(t)));
+    updateRepeatButtonVisibility();
     startPulseLoop();
     speak(pickInstructionText(t));
   }

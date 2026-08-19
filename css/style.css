@@ -1100,7 +1100,14 @@ h2 {
 }
 .modal-header .demo-badge { background: var(--tertiary); color: #fff; }
 
-.modal-card-guided-picking { max-width: 920px; }
+/* Taller than the default .modal-card's 80vh cap, and given a smaller top
+   offset via #guidedPickingModal below — the phone + live plan panels are
+   tall, so this modal needs most of the viewport's height rather than the
+   generous top margin a short confirm-dialog-style modal gets. The
+   inherited overflow-y: auto (from .modal-card) still applies as a safety
+   net on very short/zoomed-in viewports where even this isn't enough. */
+.modal-card-guided-picking { max-width: 920px; max-height: 94vh; }
+#guidedPickingModal { padding-top: 3vh; padding-bottom: 2vh; }
 
 .guided-picking-layout {
   display: flex;
@@ -1110,11 +1117,17 @@ h2 {
   flex-wrap: wrap;
 }
 
-/* ---- Phone frame ---- */
+/* ---- Phone frame ----
+   Height is capped to a vh fraction (not just a flat 640px) so the whole
+   modal fits inside shorter/scaled browser viewports — e.g. a MacBook's
+   "more space" scaled resolution — without pushing the Confirm Pick button
+   off the bottom of the screen. Scales down together with
+   .guided-picking-plan-wrap below so the phone and the live 2D plan stay
+   the same height as each other at any viewport size. */
 .picker-phone {
   flex: 0 0 320px;
   width: 320px;
-  height: 640px;
+  height: min(640px, 68vh);
   background: #1a1a18;
   border-radius: 34px;
   padding: 10px;
@@ -1256,6 +1269,32 @@ h2 {
 @keyframes pickerSpin { to { transform: rotate(360deg); } }
 
 /* ---- Active pick / navigation screen ---- */
+/* Re-reads the current task's pick-to-voice instruction aloud on demand —
+   sits over .picker-screen (position:relative), so it floats in the
+   corner without disturbing the centered progress/leg-label/location
+   stack below it. Hidden automatically when speech is unavailable or
+   muted (see updateRepeatButtonVisibility in guidedPickingDemo.js). */
+.picker-repeat-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--motion-fast), transform var(--motion-fast);
+}
+.picker-repeat-btn:hover { background: rgba(255,255,255,0.18); }
+.picker-repeat-btn:active { transform: scale(.94); }
+.picker-repeat-btn[hidden] { display: none; }
 .picker-task-progress { font-size: 12px; color: rgba(255,255,255,0.6); text-align: center; padding-top: var(--sp-3); }
 .picker-leg-label { font-size: 12px; color: rgba(255,255,255,0.45); text-align: center; margin-top: 2px; }
 /* Turn-by-turn mini-map for the current leg — "like Google Maps" per-leg
@@ -1306,13 +1345,15 @@ h2 {
 .picker-done-summary { font-size: 13px; color: rgba(255,255,255,0.7); max-width: 240px; }
 
 /* ---- Live 2D plan panel, alongside the phone ---- */
+/* Kept in sync with .picker-phone's height cap above — same min(640px, Nvh)
+   shape so the two panels always line up. */
 .guided-picking-plan-wrap {
   flex: 1 1 420px;
   min-width: 320px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  height: 640px;
+  height: min(640px, 68vh);
 }
 .guided-picking-plan-label { font-size: 13px; color: var(--ink-secondary); font-weight: 500; }
 .guided-picking-plan-canvas-wrap {
